@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iHelper 项目看板</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a23; --panel2:#1e222d; --line:#2a2f3d;
+    --text:#e6e9f0; --muted:#8b93a7; --accent:#5b8def; --accent2:#7c5cff;
+    --ok:#3ecf8e; --warn:#f5a524; --idle:#4a5163; --danger:#ff6b8a;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.65; padding:32px 20px 80px;
+  }
+  .wrap{max-width:1100px;margin:0 auto}
+
+  header{margin-bottom:32px}
+  h1{font-size:30px;font-weight:700;letter-spacing:-.5px}
+  h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:14px;margin-top:6px}
+
+  .tagline{
+    background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:var(--radius); padding:18px 22px; margin:24px 0 32px;
+  }
+  .tagline p{color:#c3cad9;font-size:15px}
+  .tagline strong{color:var(--text)}
+
+  h2{font-size:19px;font-weight:650;margin:36px 0 16px;display:flex;align-items:center;gap:10px}
+  h2::before{content:"";width:3px;height:17px;background:var(--accent);border-radius:2px}
+
+  /* 进度总览 */
+  .overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+  .stat .n{font-size:26px;font-weight:700}
+  .stat .l{color:var(--muted);font-size:12px;margin-top:2px}
+
+  /* 阶段 */
+  .phase{
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:var(--radius); margin-bottom:14px; overflow:hidden;
+  }
+  .phase-head{
+    display:flex;align-items:center;gap:14px;padding:16px 20px;cursor:pointer;
+    user-select:none;transition:background .15s;
+  }
+  .phase-head:hover{background:var(--panel2)}
+  .chev{color:var(--muted);font-size:11px;transition:transform .2s;width:12px}
+  .phase.open .chev{transform:rotate(90deg)}
+  .phase-title{font-weight:600;font-size:15px;flex:1}
+  .phase-title small{color:var(--muted);font-weight:400;font-size:12.5px;margin-left:8px}
+
+  .badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;white-space:nowrap}
+  .b-doing{background:rgba(245,165,36,.15);color:var(--warn)}
+  .b-done{background:rgba(62,207,142,.15);color:var(--ok)}
+  .b-idle{background:rgba(139,147,167,.13);color:var(--muted)}
+
+  .bar{width:110px;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;flex-shrink:0}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px}
+  .pct{font-size:12px;color:var(--muted);width:34px;text-align:right;font-variant-numeric:tabular-nums}
+
+  .phase-body{display:none;padding:4px 20px 18px;border-top:1px solid var(--line)}
+  .phase.open .phase-body{display:block}
+  .goal{color:var(--muted);font-size:13px;margin:14px 0 12px}
+  .goal b{color:#c3cad9;font-weight:500}
+
+  ul.items{list-style:none}
+  ul.items li{
+    display:flex;align-items:flex-start;gap:10px;padding:6px 0;
+    font-size:14px;color:#c3cad9;border-bottom:1px solid rgba(42,47,61,.5);
+  }
+  ul.items li:last-child{border-bottom:none}
+  .box{
+    width:15px;height:15px;border:1.5px solid var(--idle);border-radius:4px;
+    flex-shrink:0;margin-top:4px;font-size:10px;text-align:center;line-height:12px;color:transparent;
+  }
+  li.done .box{background:var(--ok);border-color:var(--ok);color:#0f1117}
+  li.done{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--idle)}
+
+  .exit{
+    margin-top:14px;padding:10px 14px;background:var(--panel2);
+    border-radius:9px;font-size:12.5px;color:var(--muted);
+  }
+  .exit b{color:var(--accent);font-weight:600}
+
+  /* 模块矩阵 */
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  td:first-child{font-weight:550}
+  .tb{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .p0{color:#ff6b8a;font-weight:600}
+  .p1{color:var(--warn);font-weight:600}
+  .p2{color:var(--accent);font-weight:600}
+  .p3{color:var(--muted)}
+
+  /* 非目标 */
+  .nots{display:flex;flex-wrap:wrap;gap:8px}
+  .not{
+    background:rgba(255,107,138,.08);border:1px solid rgba(255,107,138,.2);
+    color:#ff8fa5;padding:6px 13px;border-radius:20px;font-size:13px;
+  }
+
+  /* 待决 */
+  .todos{display:grid;gap:10px}
+  .todo{
+    background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);
+    border-radius:10px;padding:13px 17px;
+  }
+  .todo .q{font-weight:600;font-size:14px}
+  .todo .w{color:var(--muted);font-size:12.5px;margin-top:3px}
+
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+  footer a{color:var(--accent);text-decoration:none}
+  footer a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1><span>iHelper</span> 项目看板</h1>
+  <div class="sub">个人与家庭数据中枢 · 最后更新 2026-07-28</div>
+</header>
+
+<div class="tagline">
+  <p><strong>核心价值是模块间的联动，不是功能的数量。</strong><br>
+  菜谱 → 扣减食材库存 → 低于阈值 → 生成采购待办 → 出现在日程里。<br>
+  如果最终产品做不到这条链路，它就没有存在意义 —— 这是所有功能取舍的第一原则。</p>
+</div>
+
+<h2>总览</h2>
+<div class="overview">
+  <div class="stat"><div class="n" style="color:var(--warn)">Phase 0</div><div class="l">当前阶段</div></div>
+  <div class="stat"><div class="n">菜谱</div><div class="l">MVP 模块</div></div>
+  <div class="stat"><div class="n">3 个月</div><div class="l">短期目标周期</div></div>
+  <div class="stat"><div class="n">1 / 6</div><div class="l">阶段完成度</div></div>
+</div>
+
+<h2>阶段路线</h2>
+
+<div class="phase open">
+  <div class="phase-head" onclick="this.parentNode.classList.toggle('open')">
+    <span class="chev">▶</span>
+    <span class="phase-title">Phase 0 · 项目奠基<small>1–2 周</small></span>
+    <span class="badge b-doing">进行中</span>
+    <span class="bar"><i style="width:17%"></i></span><span class="pct">17%</span>
+  </div>
+  <div class="phase-body">
+    <div class="goal"><b>目标</b>　能开始写业务代码</div>
+    <ul class="items">
+      <li class="done"><span class="box">✓</span>明确需求与目标（三份文档）</li>
+      <li><span class="box"></span>GitHub 仓库初始化，确定分支策略与提交规范</li>
+      <li><span class="box"></span>Monorepo 骨架：apps/web + apps/api + packages/shared</li>
+      <li><span class="box"></span>Docker Compose 一键启动开发环境（含 PostgreSQL）</li>
+      <li><span class="box"></span>数据库 Schema 首版 + 迁移工具跑通</li>
+      <li><span class="box"></span>CI：提交即跑 lint + 类型检查 + 测试</li>
+    </ul>
+    <div class="exit"><b>退出条件</b>　git clone 后执行一条命令，浏览器能打开一个连着数据库的空白页面。</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-head" onclick="this.parentNode.classList.toggle('open')">
+    <span class="chev">▶</span>
+    <span class="phase-title">Phase 1 · 菜谱 MVP<small>4–6 周</small></span>
+    <span class="badge b-idle">未开始</span>
+    <span class="bar"><i style="width:0%"></i></span><span class="pct">0%</span>
+  </div>
+  <div class="phase-body">
+    <div class="goal"><b>目标</b>　做一个「不用它反而不方便」的菜谱工具，不是 demo</div>
+    <ul class="items">
+      <li><span class="box"></span>单用户登录（账号密码，会话管理）</li>
+      <li><span class="box"></span>食材主数据：名称、别名、默认单位、分类</li>
+      <li><span class="box"></span>菜谱 CRUD：图片、标签、配料表、步骤、耗时、份数</li>
+      <li><span class="box"></span>单位换算体系（g / kg / ml / 个 / 勺 / 适量）</li>
+      <li><span class="box"></span>分量缩放（含智能取整：1.33 个 → 约 1½ 个）</li>
+      <li><span class="box"></span>搜索与筛选，含食材反查「有鸡蛋能做什么」</li>
+      <li><span class="box"></span>购物清单：多选菜谱 → 合并同类项 → 导出</li>
+      <li><span class="box"></span>做饭模式：大字、防熄屏、步骤逐条、可计时</li>
+      <li><span class="box"></span>数据导入导出（JSON）</li>
+    </ul>
+    <div class="exit"><b>退出条件</b>　连续两周真实使用，不再需要打开其他菜谱 App。录入 ≥30 道菜，单道 &lt;3 分钟。</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-head" onclick="this.parentNode.classList.toggle('open')">
+    <span class="chev">▶</span>
+    <span class="phase-title">Phase 2 · 库存与待办<small>4–6 周</small></span>
+    <span class="badge b-idle">未开始</span>
+    <span class="bar"><i style="width:0%"></i></span><span class="pct">0%</span>
+  </div>
+  <div class="phase-body">
+    <div class="goal"><b>目标</b>　跑通第一条联动链路</div>
+    <ul class="items">
+      <li><span class="box"></span>消耗品库存：数量、保质期、存放位置、低库存阈值</li>
+      <li><span class="box"></span>耐用品台账：购入日期、价格、保修期、说明书附件</li>
+      <li><span class="box"></span>「做了这道菜」→ 按配料表扣减库存</li>
+      <li><span class="box"></span>低库存 / 临期自动生成采购待办</li>
+      <li><span class="box"></span>待办：截止时间、优先级、重复规则、子任务</li>
+      <li><span class="box"></span>日程视图（日/周/月），待办按截止日落在日历上</li>
+    </ul>
+    <div class="exit"><b>退出条件</b>　完整走通一次「查菜谱 → 做饭 → 库存自动减 → 提醒买菜 → 补库存」。</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-head" onclick="this.parentNode.classList.toggle('open')">
+    <span class="chev">▶</span>
+    <span class="phase-title">Phase 3 · 家庭空间与多用户<small>4–6 周</small></span>
+    <span class="badge b-idle">未开始</span>
+    <span class="bar"><i style="width:0%"></i></span><span class="pct">0%</span>
+  </div>
+  <div class="phase-body">
+    <div class="goal"><b>目标</b>　从单用户升级为家庭共享，且不推翻已有数据</div>
+    <ul class="items">
+      <li><span class="box"></span>启用 space 概念（Phase 1 已在表结构中预留 space_id）</li>
+      <li><span class="box"></span>邀请成员加入家庭空间</li>
+      <li><span class="box"></span>角色：管理员 / 成员 / 只读</li>
+      <li><span class="box"></span>家庭事项：可指派给成员，进度可见</li>
+      <li><span class="box"></span>数据可见性：个人私有 vs 空间共享（私有数据管理员亦不可见）</li>
+      <li><span class="box"></span>操作审计日志</li>
+    </ul>
+    <div class="exit"><b>退出条件</b>　家人真的在用，且不需要你在旁边解释怎么用。</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-head" onclick="this.parentNode.classList.toggle('open')">
+    <span class="chev">▶</span>
+    <span class="phase-title">Phase 4 · 生活记录<small>3–4 周</small></span>
+    <span class="badge b-idle">未开始</span>
+    <span class="bar"><i style="width:0%"></i></span><span class="pct">0%</span>
+  </div>
+  <div class="phase-body">
+    <div class="goal"><b>目标</b>　把日常沉淀下来，并与其他模块互相引用</div>
+    <ul class="items">
+      <li><span class="box"></span>图文日记 / 动态，支持多图</li>
+      <li><span class="box"></span>图片存储抽象层（本地磁盘 ↔ S3 兼容可切换）</li>
+      <li><span class="box"></span>时间线与按时间 / 标签检索</li>
+      <li><span class="box"></span>空间内成员可见、可评论</li>
+      <li><span class="box"></span>关联其他模块（某次做饭、某个完成的家庭事项）</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-head" onclick="this.parentNode.classList.toggle('open')">
+    <span class="chev">▶</span>
+    <span class="phase-title">Phase 5 · 上云与多平台<small>持续</small></span>
+    <span class="badge b-idle">未开始</span>
+    <span class="bar"><i style="width:0%"></i></span><span class="pct">0%</span>
+  </div>
+  <div class="phase-body">
+    <div class="goal"><b>目标</b>　1000+ 用户的云端服务 + 真正的多平台</div>
+    <ul class="items">
+      <li><span class="box"></span>生产部署：反向代理、HTTPS、自动备份、监控告警</li>
+      <li><span class="box"></span>性能：索引优化、查询分析、缓存层（API P95 &lt; 300ms）</li>
+      <li><span class="box"></span>PWA：可安装、离线只读</li>
+      <li><span class="box"></span>移动端 App（技术方案在 Phase 4 结束前评估）</li>
+      <li><span class="box"></span>端到端同步与冲突解决</li>
+    </ul>
+  </div>
+</div>
+
+<h2>模块优先级矩阵</h2>
+<div class="tb">
+<table>
+  <tr><th>模块</th><th>优先级</th><th>阶段</th><th>说明</th></tr>
+  <tr><td>菜谱管理</td><td class="p0">P0</td><td>Phase 1</td><td>数据结构最复杂，且是联动链路的中心节点</td></tr>
+  <tr><td>消耗品库存</td><td class="p1">P1</td><td>Phase 2</td><td>与菜谱双向联动</td></tr>
+  <tr><td>待办与日程</td><td class="p1">P1</td><td>Phase 2</td><td>承接库存产生的采购提醒</td></tr>
+  <tr><td>家庭空间</td><td class="p1">P1</td><td>Phase 3</td><td>表结构在 Phase 1 就预留</td></tr>
+  <tr><td>耐用品台账</td><td class="p2">P2</td><td>Phase 2</td><td>保修到期提醒是主要价值</td></tr>
+  <tr><td>家庭事项协作</td><td class="p2">P2</td><td>Phase 3</td><td>含值日轮换</td></tr>
+  <tr><td>生活记录</td><td class="p2">P2</td><td>Phase 4</td><td>图片存储是主要成本项</td></tr>
+  <tr><td>营养信息</td><td class="p3">P3</td><td>—</td><td>先手工填写即可</td></tr>
+  <tr><td>菜谱网站解析导入</td><td class="p3">P3</td><td>—</td><td>想法池</td></tr>
+  <tr><td>按库存推荐今天做什么</td><td class="p3">P3</td><td>—</td><td>想法池</td></tr>
+</table>
+</div>
+
+<h2>明确不做</h2>
+<div class="nots">
+  <span class="not">社交网络</span>
+  <span class="not">记账 / 财务管理</span>
+  <span class="not">即时通讯</span>
+  <span class="not">企业版 / 团队协作</span>
+  <span class="not">初期的 AI 功能</span>
+</div>
+
+<h2>待决事项</h2>
+<div class="todos">
+  <div class="todo">
+    <div class="q">后端框架：NestJS（推荐）还是 FastAPI？</div>
+    <div class="w">前端已定 Vue + TS。全栈同语言可共享类型定义，对单人长期项目是决定性优势 · 需在 Phase 0 开始前定</div>
+  </div>
+  <div class="todo">
+    <div class="q">UI 组件库：Naive UI 还是 Element Plus？</div>
+    <div class="w">Phase 0 各搭一个原型页面试用后再定</div>
+  </div>
+  <div class="todo">
+    <div class="q">模糊单位（「一勺」「适量」）如何建模？</div>
+    <div class="w">最容易过度设计的地方。第一版明确不做密度换算 · Phase 1 设计阶段定</div>
+  </div>
+  <div class="todo">
+    <div class="q">移动端技术路线：PWA / React Native / Capacitor？</div>
+    <div class="w">Phase 4 结束前评估，届时对使用场景的认识会比现在清楚得多</div>
+  </div>
+</div>
+
+<footer>
+  详细内容见 <a href="./ROADMAP.md">ROADMAP.md</a> · <a href="./REQUIREMENTS.md">REQUIREMENTS.md</a> · <a href="./ARCHITECTURE.md">ARCHITECTURE.md</a><br>
+  本页面为只读看板，进度以 Markdown 文档为准 —— 修改文档后请同步更新此页。
+</footer>
+
+</div>
+</body>
+</html>
