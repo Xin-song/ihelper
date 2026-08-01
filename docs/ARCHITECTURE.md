@@ -233,8 +233,11 @@ Phase 1 只实体化 `users`、`spaces`（一行）、`recipes`、`ingredients`�
 
 Phase 1 的「单用户登录」已落地，记录几个和早期设计不完全一致的决定：
 
-- **不做公开注册**。自托管场景下，谁能碰服务器谁才该有账号，`POST /auth/register` 这种口子反而是攻击面。
-  账号只能用 `apps/api/scripts/create-user.js` 由持有服务器权限的人建，用法见脚本头部注释。
+- **公开注册**（2026-08-01 调整）：`POST /auth/register` 只收用户名和密码（+ 确认密码防打错），
+  昵称默认等于用户名，注册后自动登录，个人信息页可再改昵称。此前的设计是不开注册、账号只能用
+  `apps/api/scripts/create-user.js` 建——这条路还在，适合运维场景直接建号，但产品需求明确要公开注册，
+  按需求为准。**这意味着任何能访问到这个实例的人都能自己开号**，单用户自托管、局域网内部署时问题不大；
+  如果部署到公网且不希望陌生人自行注册，后续要在这个接口前面加开关或邀请码。
 - **Token 简化为单个 httpOnly Cookie（7 天过期），不做 Access + Refresh 分离**。原设计（3.3 节）是为多用户
   云端场景写的；单用户自托管场景下 refresh 轮换的复杂度收益不成比例，先用一个长效 Cookie，
   Phase 5 上云、接入无痕续期需求时再加。
@@ -314,3 +317,4 @@ services:
 | 2026-07-30 | 后端确定为 NestJS + Prisma；菜谱模块首版数据库 Schema 落地并验证跑通，详见 [DATABASE.md](./DATABASE.md) |
 | 2026-08-01 | UI 组件库定为 Element Plus；新增图片存储抽象层与「生成的迁移必须人工过一遍」的规矩（4.3）；`packages/shared` 改为 CJS + ESM 双构建（NestJS 走 require，Vite 走 import） |
 | 2026-08-01 | 单用户登录落地（4.4）：JWT httpOnly Cookie（简化为单 Token）、全局 Guard + `@Public()` 白名单、`users.username`、`recipes.author_id`／`recipe_submissions.user_id` 认领机制、`scripts/create-user.js` 建号（不做公开注册） |
+| 2026-08-01 | 追加 `POST /auth/register` 公开注册（用户名 + 密码 + 确认密码，注册即登录），推翻上一条记录里"不做公开注册"的决定，见 4.4 |

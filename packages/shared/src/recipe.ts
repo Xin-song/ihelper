@@ -208,6 +208,12 @@ export interface LoginInput {
   password: string;
 }
 
+export interface RegisterInput {
+  username: string;
+  password: string;
+  confirmPassword: string;
+}
+
 export interface UpdateProfileInput {
   displayName: string;
 }

@@ -8,7 +8,7 @@ const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 
-const form = reactive({ username: '', password: '' });
+const form = reactive({ username: '', password: '', confirmPassword: '' });
 const submitting = ref(false);
 
 async function submit() {
@@ -16,9 +16,14 @@ async function submit() {
     ElMessage.warning('用户名和密码都要填');
     return;
   }
+  if (form.password !== form.confirmPassword) {
+    ElMessage.warning('两次输入的密码不一致');
+    return;
+  }
   submitting.value = true;
   try {
-    await authStore.login(form.username.trim(), form.password);
+    await authStore.register(form.username.trim(), form.password, form.confirmPassword);
+    ElMessage.success('注册成功');
     const redirect = (route.query.redirect as string) || '/';
     router.replace(redirect);
   } catch (error) {
@@ -32,17 +37,30 @@ async function submit() {
 <template>
   <div class="ih-login">
     <div class="ih-login__card ih-card">
-      <h1 class="ih-heading ih-login__title">登录 iHelper</h1>
+      <h1 class="ih-heading ih-login__title">注册 iHelper</h1>
       <el-form label-position="top" @submit.prevent="submit">
         <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="用户名" @keyup.enter="submit" />
+          <el-input
+            v-model="form.username"
+            placeholder="字母、数字、下划线，3-32 位"
+            @keyup.enter="submit"
+          />
         </el-form-item>
         <el-form-item label="密码">
           <el-input
             v-model="form.password"
             type="password"
             show-password
-            placeholder="密码"
+            placeholder="至少 8 位"
+            @keyup.enter="submit"
+          />
+        </el-form-item>
+        <el-form-item label="确认密码">
+          <el-input
+            v-model="form.confirmPassword"
+            type="password"
+            show-password
+            placeholder="再输入一遍，防止打错"
             @keyup.enter="submit"
           />
         </el-form-item>
@@ -53,12 +71,12 @@ async function submit() {
           :loading="submitting"
           @click="submit"
         >
-          登录
+          注册
         </el-button>
       </el-form>
       <p class="ih-login__switch ih-muted">
-        还没有账号？
-        <RouterLink :to="{ path: '/register', query: route.query }">去注册</RouterLink>
+        已有账号？
+        <RouterLink :to="{ path: '/login', query: route.query }">去登录</RouterLink>
       </p>
     </div>
   </div>

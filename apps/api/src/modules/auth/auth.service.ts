@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -42,8 +42,24 @@ export class AuthService {
     if (!user || !matches) {
       throw new UnauthorizedException('用户名或密码错误');
     }
-    const token = this.jwt.sign({ sub: user.id, username: user.username });
-    return { token, user: toPublicUser(user) };
+    return { token: this.signToken(user), user: toPublicUser(user) };
+  }
+
+  /** 昵称默认等于用户名，注册时不额外收集，个人信息页里随时能改 */
+  async register(username: string, password: string) {
+    const existing = await this.prisma.user.findFirst({ where: { username } });
+    if (existing) {
+      throw new ConflictException('用户名已被占用');
+    }
+    const passwordHash = await bcrypt.hash(password, PASSWORD_SALT_ROUNDS);
+    const user = await this.prisma.user.create({
+      data: { username, passwordHash, displayName: username },
+    });
+    return { token: this.signToken(user), user: toPublicUser(user) };
+  }
+
+  private signToken(user: { id: string; username: string }) {
+    return this.jwt.sign({ sub: user.id, username: user.username });
   }
 
   async getPublicProfile(id: string): Promise<PublicUser> {

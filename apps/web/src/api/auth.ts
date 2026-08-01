@@ -1,6 +1,7 @@
 import type {
   ChangePasswordInput,
   LoginInput,
+  RegisterInput,
   UpdateProfileInput,
   UserDto,
 } from '@ihelper/shared';
@@ -9,6 +10,8 @@ import { apiClient } from './client';
 export const authApi = {
   login: (payload: LoginInput) =>
     apiClient.post<UserDto>('/auth/login', payload).then((r) => r.data),
+  register: (payload: RegisterInput) =>
+    apiClient.post<UserDto>('/auth/register', payload).then((r) => r.data),
   logout: () => apiClient.post('/auth/logout').then((r) => r.data),
   me: () => apiClient.get<UserDto>('/auth/me').then((r) => r.data),
   updateProfile: (payload: UpdateProfileInput) =>

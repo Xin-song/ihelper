@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Patch, Post, Res } from '@nestjs/common';
 import type { CookieOptions, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { Public } from './decorators/public.decorator';
@@ -24,6 +25,18 @@ export class AuthController {
   @HttpCode(200)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const { token, user } = await this.authService.login(dto.username, dto.password);
+    res.cookie(AUTH_COOKIE_NAME, token, { ...COOKIE_OPTIONS, maxAge: AUTH_TOKEN_TTL_MS });
+    return user;
+  }
+
+  @Public()
+  @Post('register')
+  @HttpCode(200)
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('两次输入的密码不一致');
+    }
+    const { token, user } = await this.authService.register(dto.username, dto.password);
     res.cookie(AUTH_COOKIE_NAME, token, { ...COOKIE_OPTIONS, maxAge: AUTH_TOKEN_TTL_MS });
     return user;
   }
