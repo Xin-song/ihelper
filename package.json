@@ -1,0 +1,16 @@
+{
+  "name": "ihelper",
+  "private": true,
+  "version": "0.0.0",
+  "description": "自托管优先的个人与家庭数据中枢",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "api:dev": "pnpm --filter @ihelper/api start:dev",
+    "api:migrate": "pnpm --filter @ihelper/api prisma:migrate"
+  }
+}

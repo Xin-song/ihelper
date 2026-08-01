@@ -52,3 +52,10 @@ coverage/
 .eslintcache
 .turbo/
 .pytest_cache/
+
+# 本地磁盘存储的上传文件（换成 S3 后这条可以删）
+apps/api/uploads/
+
+# Claude Code 的 worktree / 本地设置
+.claude/worktrees/
+.claude/settings.local.json

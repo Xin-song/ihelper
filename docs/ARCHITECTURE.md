@@ -1,6 +1,6 @@
 # iHelper 技术选型与架构
 
-> 最后更新：2026-07-28
+> 最后更新：2026-08-01
 > 配套文档：[ROADMAP.md](./ROADMAP.md) · [REQUIREMENTS.md](./REQUIREMENTS.md)
 
 ---
@@ -10,10 +10,10 @@
 | 层 | 选型 | 状态 |
 |---|---|---|
 | 前端 | **Vue 3 + TypeScript + Vite** | ✅ 已定 |
-| UI 组件库 | **Naive UI** 或 **Element Plus** | 🟨 Phase 0 试用后定 |
+| UI 组件库 | **Element Plus** | ✅ 已定 |
 | 状态管理 | **Pinia** | ✅ 已定 |
 | 数据库 | **PostgreSQL 16+** | ✅ 已定 |
-| 后端 | 见下节，两个候选 | 🟨 待定 |
+| 后端 | **NestJS + Prisma**（TypeScript） | ✅ 已定 |
 | 部署 | **Docker Compose**（本地）→ 云服务器 | ✅ 已定 |
 
 ### 为什么是 PostgreSQL
@@ -80,7 +80,7 @@ Vue 3 (TS)  ←→  FastAPI (Python)  ←→  SQLModel/SQLAlchemy  ←→  Postg
 
 如果觉得 NestJS 太重，还有个折中：**Nitro / H3 或 Fastify + Prisma**，同样是 TS，但更轻。
 
-> **决策记录**：待定。请在 Phase 0 开始前确认，并回来更新此处。
+> **决策记录**：2026-07-30 确定选 A（NestJS + Prisma）。`apps/api` 已按此方案搭好骨架，菜谱模块首版 Schema 已用 Prisma Migrate 跑通，详见 [DATABASE.md](./DATABASE.md)。
 
 ---
 
@@ -219,6 +219,15 @@ Phase 1 只实体化 `users`、`spaces`（一行）、`recipes`、`ingredients`�
 - **时间戳**：`created_at` / `updated_at` 全表标配，用 `TIMESTAMPTZ`（带时区），一律存 UTC
 - **迁移文件**：从第一次建表就走迁移工具，禁止手动改库
 - **枚举**：用字符串常量而非数据库 enum 类型（PostgreSQL 改 enum 很麻烦），在应用层校验
+- **生成的迁移必须人工过一遍**：schema 里有一批 Prisma DSL 表达不了、只能手写在迁移 SQL 里的东西
+  （GIN 索引、局部索引、`CHECK` 约束、`GENERATED ALWAYS` 的 `search_vector` 列）。
+  Prisma 不认识它们，`migrate dev` 生成的 SQL 会带上 `DROP INDEX` 想把它们"清理"掉。
+  **一律用 `--create-only` 生成、删掉误删语句、再 `migrate deploy`**，不要直接一把梭。
+  实例见 [DATABASE.md 5.4](./DATABASE.md)。
+- **图片存储走抽象层**：业务代码只依赖 `StorageService` 抽象类，本地磁盘实现是
+  `LocalDiskStorage`。Phase 4 换 S3 只改 `storage.module.ts` 的 `useClass` 和 `main.ts`
+  里那段静态目录挂载。落盘文件名一律服务端生成（UUID + mime 白名单扩展名），
+  绝不复用用户传来的文件名 —— 那是路径穿越和覆盖已有文件的入口。
 
 ---
 
@@ -270,8 +279,8 @@ services:
 
 | 事项 | 何时决定 |
 |---|---|
-| 后端框架最终选定（NestJS vs FastAPI） | **Phase 0 开始前** |
-| UI 组件库（Naive UI vs Element Plus） | Phase 0 |
+| ~~后端框架最终选定（NestJS vs FastAPI）~~ | 2026-07-30 已定：NestJS + Prisma |
+| ~~UI 组件库（Naive UI vs Element Plus）~~ | 2026-08-01 已定：Element Plus |
 | 中文分词扩展（zhparser vs pg_jieba） | Phase 1 做搜索时 |
 | 图片存储方案与压缩策略 | Phase 4 |
 | 移动端技术路线（PWA / React Native / Capacitor） | Phase 4 结束前 |
@@ -283,3 +292,5 @@ services:
 | 日期 | 变更 |
 |---|---|
 | 2026-07-28 | 初版：确定 Vue + PostgreSQL，后端待定，制定多用户预留方案 |
+| 2026-07-30 | 后端确定为 NestJS + Prisma；菜谱模块首版数据库 Schema 落地并验证跑通，详见 [DATABASE.md](./DATABASE.md) |
+| 2026-08-01 | UI 组件库定为 Element Plus；新增图片存储抽象层与「生成的迁移必须人工过一遍」的规矩（4.3）；`packages/shared` 改为 CJS + ESM 双构建（NestJS 走 require，Vite 走 import） |
