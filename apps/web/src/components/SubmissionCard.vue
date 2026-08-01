@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { SubmissionDto } from '@ihelper/shared';
 import { submissionsApi } from '../api/submissions';
+import { useAuthStore } from '../stores/auth';
 
 const props = withDefaults(
   defineProps<{
@@ -15,8 +16,15 @@ const props = withDefaults(
 
 const emit = defineEmits<{ removed: [string] }>();
 
+const authStore = useAuthStore();
 const likeCount = ref(props.submission.likeCount);
 const liking = ref(false);
+
+/** 没 userId 是登录接入前的存量作业，登录用户都能删；有 userId 的只有本人能删 */
+const canRemove = computed(() => {
+  if (!authStore.user) return false;
+  return !props.submission.userId || props.submission.userId === authStore.user.id;
+});
 
 const createdAt = computed(() =>
   new Date(props.submission.createdAt).toLocaleDateString('zh-CN', {
@@ -108,7 +116,13 @@ async function remove() {
         <span class="ih-submission__like-icon">👏</span>
         {{ likeCount > 0 ? likeCount : '赞一个' }}
       </button>
-      <el-popconfirm title="删除这条作业？" confirm-button-text="删除" cancel-button-text="取消" @confirm="remove">
+      <el-popconfirm
+        v-if="canRemove"
+        title="删除这条作业？"
+        confirm-button-text="删除"
+        cancel-button-text="取消"
+        @confirm="remove"
+      >
         <template #reference>
           <button type="button" class="ih-submission__delete ih-muted">删除</button>
         </template>

@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DEFAULT_SPACE_ID, RecipeStep } from '@ihelper/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LocalDiskStorage } from '../../storage/local-disk.storage';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { CreatePrintImageDto } from './dto/create-print-image.dto';
+
+const AUTHOR_SELECT = { select: { id: true, username: true, displayName: true } } as const;
 
 const LIST_SELECT = {
   id: true,
@@ -19,11 +21,14 @@ const LIST_SELECT = {
   servings: true,
   visibility: true,
   updatedAt: true,
+  authorId: true,
+  author: AUTHOR_SELECT,
   /** 广场和列表页要显示「N 份作业」 */
   _count: { select: { submissions: { where: { deletedAt: null } } } },
 } as const;
 
 const DETAIL_INCLUDE = {
+  author: AUTHOR_SELECT,
   recipeIngredients: {
     orderBy: { sortOrder: 'asc' as const },
     include: {
@@ -114,11 +119,12 @@ export class RecipesService {
     return serializeRecipe(recipe);
   }
 
-  async create(dto: CreateRecipeDto) {
+  async create(dto: CreateRecipeDto, authorId: string) {
     const recipe = await this.prisma.$transaction(async (tx) => {
       const created = await tx.recipe.create({
         data: {
           spaceId: DEFAULT_SPACE_ID,
+          authorId,
           title: dto.title,
           coverImageUrl: dto.coverImageUrl,
           description: dto.description,
@@ -156,8 +162,9 @@ export class RecipesService {
     return this.findOne(recipe.id);
   }
 
-  async update(id: string, dto: UpdateRecipeDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateRecipeDto, userId: string) {
+    const existing = await this.findOne(id);
+    this.assertOwnership(existing, userId);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.recipe.update({
@@ -201,8 +208,9 @@ export class RecipesService {
     return this.findOne(id);
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id);
+    this.assertOwnership(existing, userId);
     return this.prisma.recipe.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -210,8 +218,9 @@ export class RecipesService {
   }
 
   /** 挂一张已上传的打印版菜谱图到菜谱上 */
-  async addPrintImage(recipeId: string, dto: CreatePrintImageDto) {
-    await this.findOne(recipeId);
+  async addPrintImage(recipeId: string, dto: CreatePrintImageDto, userId: string) {
+    const recipe = await this.findOne(recipeId);
+    this.assertOwnership(recipe, userId);
     const last = await this.prisma.recipePrintImage.findFirst({
       where: { recipeId },
       orderBy: { sortOrder: 'desc' },
@@ -231,7 +240,9 @@ export class RecipesService {
    * 打印版图是硬删除：它没有软删除字段，也没有引用它的东西。
    * 文件本身也一起删，否则 uploads 目录只涨不减。
    */
-  async removePrintImage(recipeId: string, imageId: string) {
+  async removePrintImage(recipeId: string, imageId: string, userId: string) {
+    const recipe = await this.findOne(recipeId);
+    this.assertOwnership(recipe, userId);
     const image = await this.prisma.recipePrintImage.findFirst({
       where: { id: imageId, recipeId },
     });
@@ -245,5 +256,12 @@ export class RecipesService {
     if (key) await this.storage.remove(key);
 
     return { id: imageId };
+  }
+
+  /** authorId 为空是登录接入前建的存量菜谱，暂不限制谁能改；见 ARCHITECTURE.md 4.4 */
+  private assertOwnership(recipe: { authorId: string | null }, userId: string) {
+    if (recipe.authorId && recipe.authorId !== userId) {
+      throw new ForbiddenException('无权修改他人创建的菜谱');
+    }
   }
 }

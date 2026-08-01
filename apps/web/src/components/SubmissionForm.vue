@@ -3,6 +3,7 @@ import { reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { SubmissionDto } from '@ihelper/shared';
 import { submissionsApi } from '../api/submissions';
+import { useAuthStore } from '../stores/auth';
 import ImageUploader from './ImageUploader.vue';
 
 const props = defineProps<{ modelValue: boolean; recipeId: string; recipeTitle: string }>();
@@ -11,20 +12,19 @@ const emit = defineEmits<{
   created: [SubmissionDto];
 }>();
 
+const authStore = useAuthStore();
 const submitting = ref(false);
 
 const form = reactive({
   images: [] as string[],
   body: '',
   rating: 0,
-  authorName: '',
 });
 
 function reset() {
   form.images = [];
   form.body = '';
   form.rating = 0;
-  form.authorName = '';
 }
 
 // 每次重新打开都从空白开始，避免上次没提交的内容残留
@@ -52,7 +52,6 @@ async function submit() {
       body: form.body.trim(),
       // el-rate 没选时是 0，后端只认 1-5，所以要转成不传
       rating: form.rating > 0 ? form.rating : undefined,
-      authorName: form.authorName.trim() || undefined,
     });
     emit('created', created);
     emit('update:modelValue', false);
@@ -103,7 +102,7 @@ async function submit() {
         </el-form-item>
 
         <el-form-item label="署名">
-          <el-input v-model="form.authorName" placeholder="我" maxlength="40" />
+          <span class="ih-submission-form__author">{{ authStore.user?.displayName }}</span>
         </el-form-item>
       </div>
     </el-form>
@@ -125,5 +124,10 @@ async function submit() {
 .ih-submission-form__row :deep(.el-form-item) {
   flex: 1;
   min-width: 180px;
+}
+
+.ih-submission-form__author {
+  font-size: 14px;
+  color: var(--ih-text-secondary);
 }
 </style>

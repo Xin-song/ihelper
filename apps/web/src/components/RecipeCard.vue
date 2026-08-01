@@ -43,6 +43,7 @@ const totalMinutes = computed(() => {
           void-color="#ece2d6"
         />
         <span>{{ recipe.servings }} 人份</span>
+        <span v-if="recipe.author" class="ih-recipe-card__author">{{ recipe.author.displayName }}</span>
       </div>
     </div>
   </RouterLink>
@@ -142,5 +143,9 @@ const totalMinutes = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.ih-recipe-card__author {
+  margin-left: auto;
 }
 </style>

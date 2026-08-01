@@ -146,7 +146,7 @@ ihelper/
 - REST 风格，资源名复数：`GET /api/v1/recipes`、`POST /api/v1/recipes/:id/cook`
 - 统一响应结构，统一错误码
 - 列表接口一律分页，默认 20 条
-- 认证：JWT（Access Token 短期 + Refresh Token），Token 放 httpOnly Cookie
+- 认证：JWT，Token 放 httpOnly Cookie（7 天有效期，见 4.4——落地时从「Access + Refresh」简化为单 Token，理由同上）
 
 ---
 
@@ -229,6 +229,25 @@ Phase 1 只实体化 `users`、`spaces`（一行）、`recipes`、`ingredients`�
   里那段静态目录挂载。落盘文件名一律服务端生成（UUID + mime 白名单扩展名），
   绝不复用用户传来的文件名 —— 那是路径穿越和覆盖已有文件的入口。
 
+### 4.4 登录接入（2026-08-01）
+
+Phase 1 的「单用户登录」已落地，记录几个和早期设计不完全一致的决定：
+
+- **不做公开注册**。自托管场景下，谁能碰服务器谁才该有账号，`POST /auth/register` 这种口子反而是攻击面。
+  账号只能用 `apps/api/scripts/create-user.js` 由持有服务器权限的人建，用法见脚本头部注释。
+- **Token 简化为单个 httpOnly Cookie（7 天过期），不做 Access + Refresh 分离**。原设计（3.3 节）是为多用户
+  云端场景写的；单用户自托管场景下 refresh 轮换的复杂度收益不成比例，先用一个长效 Cookie，
+  Phase 5 上云、接入无痕续期需求时再加。
+- **全局鉴权 + 白名单，不是逐接口加 Guard**：`JwtAuthGuard` 挂在 `APP_GUARD`，默认所有接口都要登录，
+  用 `@Public()` 显式标记不需要登录的接口（菜谱/广场/作业的所有 `GET`、登录、退出登录）。
+  这样新增接口忘记加保护是「默认拒绝」而不是「默认放行」，比逐个加更不容易漏。
+- **`users.username` 是登录用，`display_name` 是昵称**，两者分开——用户名不可改（body 校验里没开放这个字段），
+  昵称随便改。`email` 从必填改成选填，因为不做找回密码邮件，这一版用不上。
+- **`recipes.author_id` 允许为空**：登录接入前建的存量菜谱没有作者。应用层按「未认领」处理——
+  任何登录用户都能编辑/删除这类菜谱；一旦某条菜谱有了 `author_id`，就只有作者本人能改，
+  其他人操作会收到 403。`recipe_submissions.user_id` 同理。这是过渡期的兼容策略，
+  不是长期设计；Phase 3 引入真正的多用户协作时要重新评估「未认领」菜谱该归谁。
+
 ---
 
 ## 5. 部署
@@ -294,3 +313,4 @@ services:
 | 2026-07-28 | 初版：确定 Vue + PostgreSQL，后端待定，制定多用户预留方案 |
 | 2026-07-30 | 后端确定为 NestJS + Prisma；菜谱模块首版数据库 Schema 落地并验证跑通，详见 [DATABASE.md](./DATABASE.md) |
 | 2026-08-01 | UI 组件库定为 Element Plus；新增图片存储抽象层与「生成的迁移必须人工过一遍」的规矩（4.3）；`packages/shared` 改为 CJS + ESM 双构建（NestJS 走 require，Vite 走 import） |
+| 2026-08-01 | 单用户登录落地（4.4）：JWT httpOnly Cookie（简化为单 Token）、全局 Guard + `@Public()` 白名单、`users.username`、`recipes.author_id`／`recipe_submissions.user_id` 认领机制、`scripts/create-user.js` 建号（不做公开注册） |

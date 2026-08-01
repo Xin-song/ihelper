@@ -65,6 +65,17 @@ export interface RecipeStep {
 
 /** 前后端共用的 API 响应形状，避免两边各写一份类型漂移 */
 
+/** 登录用户，个人信息与作者展示共用这一份形状 */
+export interface UserDto {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string | null;
+  createdAt: string;
+}
+
+export type RecipeAuthorDto = Pick<UserDto, 'id' | 'username' | 'displayName'>;
+
 export interface IngredientDto {
   id: string;
   name: string;
@@ -102,6 +113,9 @@ export interface RecipeListItemDto {
   servings: number;
   visibility: RecipeVisibility;
   updatedAt: string;
+  authorId: string | null;
+  /** 登录接入前建的存量菜谱没有作者，前端按「未认领」处理 */
+  author: RecipeAuthorDto | null;
   /** 这道菜收到的作业数，广场和列表页展示用 */
   submissionCount?: number;
 }
@@ -128,6 +142,8 @@ export interface RecipeDetailDto extends RecipeListItemDto {
 export interface SubmissionDto {
   id: string;
   recipeId: string;
+  /** 登录接入前留下的存量作业没有 userId，前端按「未认领」处理，不显示删除按钮之外的限制 */
+  userId: string | null;
   authorName: string;
   images: string[];
   body: string;
@@ -185,7 +201,20 @@ export interface CreateSubmissionInput {
   images: string[];
   body: string;
   rating?: number;
-  authorName?: string;
+}
+
+export interface LoginInput {
+  username: string;
+  password: string;
+}
+
+export interface UpdateProfileInput {
+  displayName: string;
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface CreatePrintImageInput {

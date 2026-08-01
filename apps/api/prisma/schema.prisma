@@ -23,15 +23,19 @@ model Space {
 
 model User {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String    @unique
+  /// 登录用户名，见 ARCHITECTURE.md 4.4 —— 自托管场景不做公开注册，邮箱非必填
+  username     String    @unique
+  email        String?   @unique
   passwordHash String    @map("password_hash")
+  /// 昵称，展示用
   displayName  String    @map("display_name")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
 
-  memberships SpaceMember[]
-  submissions RecipeSubmission[]
+  memberships     SpaceMember[]
+  submissions     RecipeSubmission[]
+  authoredRecipes Recipe[]           @relation("RecipeAuthor")
 
   @@map("users")
 }
@@ -105,11 +109,14 @@ model Recipe {
   lastCookedAt   DateTime? @map("last_cooked_at") @db.Timestamptz
   /// 全文检索用，GENERATED ALWAYS AS 表达式在迁移 SQL 里补，Prisma 只知道类型
   searchVector   Unsupported("tsvector")? @map("search_vector")
+  /// 作者，登录用户接入前建的菜谱这里是 null（见 ARCHITECTURE.md 4.4 的兼容说明）
+  authorId       String?   @map("author_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
 
   space             Space              @relation(fields: [spaceId], references: [id])
+  author             User?              @relation("RecipeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   recipeIngredients RecipeIngredient[]
   submissions       RecipeSubmission[]
   printImages       RecipePrintImage[]

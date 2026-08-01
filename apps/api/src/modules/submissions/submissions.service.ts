@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DEFAULT_SPACE_ID } from '@ihelper/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
+import { RequestUser } from '../auth/decorators/current-user.decorator';
 
 const SUBMISSION_SELECT = {
   id: true,
   recipeId: true,
+  userId: true,
   authorName: true,
   images: true,
   body: true,
@@ -43,16 +45,18 @@ export class SubmissionsService {
     });
   }
 
-  async create(recipeId: string, dto: CreateSubmissionDto) {
+  /** 作者信息现在一律取当前登录用户，不再信前端传的署名 */
+  async create(recipeId: string, dto: CreateSubmissionDto, author: RequestUser) {
     await this.assertRecipeExists(recipeId);
     return this.prisma.recipeSubmission.create({
       data: {
         spaceId: DEFAULT_SPACE_ID,
         recipeId,
+        userId: author.id,
         images: dto.images,
         body: dto.body,
         rating: dto.rating,
-        authorName: dto.authorName?.trim() || '我',
+        authorName: author.displayName,
       },
       select: SUBMISSION_SELECT,
     });
@@ -68,8 +72,12 @@ export class SubmissionsService {
     });
   }
 
-  async remove(id: string) {
-    await this.assertExists(id);
+  async remove(id: string, userId: string) {
+    const found = await this.assertExists(id);
+    // userId 为空是登录接入前留下的存量作业，暂不限制谁能删；见 ARCHITECTURE.md 4.4
+    if (found.userId && found.userId !== userId) {
+      throw new ForbiddenException('无权删除他人的作业');
+    }
     return this.prisma.recipeSubmission.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -80,9 +88,10 @@ export class SubmissionsService {
   private async assertExists(id: string) {
     const found = await this.prisma.recipeSubmission.findFirst({
       where: { id, spaceId: DEFAULT_SPACE_ID, deletedAt: null },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
     if (!found) throw new NotFoundException(`作业 ${id} 不存在`);
+    return found;
   }
 
   private async assertRecipeExists(recipeId: string) {

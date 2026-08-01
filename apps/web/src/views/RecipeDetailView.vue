@@ -8,12 +8,14 @@ import { formatScaledQuantity, scaleQuantity } from '@ihelper/shared';
 import { recipesApi } from '../api/recipes';
 import { submissionsApi } from '../api/submissions';
 import { useRecipesStore } from '../stores/recipes';
+import { useAuthStore } from '../stores/auth';
 import SubmissionCard from '../components/SubmissionCard.vue';
 import SubmissionForm from '../components/SubmissionForm.vue';
 
 const route = useRoute();
 const router = useRouter();
 const store = useRecipesStore();
+const authStore = useAuthStore();
 
 const recipe = ref<RecipeDetailDto | null>(null);
 const loading = ref(true);
@@ -21,6 +23,24 @@ const targetServings = ref(1);
 
 const submissions = ref<SubmissionDto[]>([]);
 const showSubmissionForm = ref(false);
+
+/** 没作者的是登录接入前的存量菜谱，登录用户都能改；有作者的只有作者本人能改 */
+const canManage = computed(() => {
+  if (!authStore.user || !recipe.value) return false;
+  return !recipe.value.authorId || recipe.value.authorId === authStore.user.id;
+});
+
+function requireLogin() {
+  router.push({ path: '/login', query: { redirect: route.fullPath } });
+}
+
+function openSubmissionForm() {
+  if (!authStore.isLoggedIn) {
+    requireLogin();
+    return;
+  }
+  showSubmissionForm.value = true;
+}
 
 async function load() {
   loading.value = true;
@@ -102,22 +122,25 @@ async function handleDelete() {
     <div class="ih-detail__header">
       <div>
         <h1 class="ih-heading ih-detail__title">{{ recipe.title }}</h1>
+        <p v-if="recipe.author" class="ih-muted ih-detail__author">by {{ recipe.author.displayName }}</p>
         <p v-if="recipe.description" class="ih-muted ih-detail__desc">{{ recipe.description }}</p>
         <div class="ih-detail__tags">
           <span v-for="tag in recipe.tags" :key="tag" class="ih-chip">{{ tag }}</span>
         </div>
       </div>
       <div class="ih-detail__actions">
-        <el-button :icon="Upload" round type="primary" @click="showSubmissionForm = true">
+        <el-button :icon="Upload" round type="primary" @click="openSubmissionForm">
           交作业
         </el-button>
-        <el-button :icon="Printer" round @click="router.push(`/recipes/${recipe.id}/print`)">
-          打印版
-        </el-button>
-        <el-button :icon="Edit" round @click="router.push(`/recipes/${recipe.id}/edit`)">
-          编辑
-        </el-button>
-        <el-button :icon="Delete" round type="danger" plain @click="handleDelete">删除</el-button>
+        <template v-if="canManage">
+          <el-button :icon="Printer" round @click="router.push(`/recipes/${recipe.id}/print`)">
+            打印版
+          </el-button>
+          <el-button :icon="Edit" round @click="router.push(`/recipes/${recipe.id}/edit`)">
+            编辑
+          </el-button>
+          <el-button :icon="Delete" round type="danger" plain @click="handleDelete">删除</el-button>
+        </template>
       </div>
     </div>
 
@@ -136,7 +159,7 @@ async function handleDelete() {
       />
       <span v-if="recipe.source" class="ih-muted">来源：{{ recipe.source }}</span>
 
-      <div class="ih-detail__visibility">
+      <div v-if="canManage" class="ih-detail__visibility">
         <el-switch
           :model-value="recipe.visibility === 'public'"
           active-text="公开到广场"
@@ -190,7 +213,7 @@ async function handleDelete() {
     <section class="ih-submissions">
       <div class="ih-submissions__header">
         <h2 class="ih-heading">用户作业（{{ submissions.length }}）</h2>
-        <el-button :icon="Upload" round size="small" @click="showSubmissionForm = true">
+        <el-button :icon="Upload" round size="small" @click="openSubmissionForm">
           交作业
         </el-button>
       </div>
@@ -254,6 +277,11 @@ async function handleDelete() {
 .ih-detail__title {
   font-size: 30px;
   margin: 0 0 8px;
+}
+
+.ih-detail__author {
+  margin: 0 0 6px;
+  font-size: 13px;
 }
 
 .ih-detail__desc {

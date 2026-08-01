@@ -31,10 +31,4 @@ export class CreateSubmissionDto {
   @Min(1)
   @Max(5)
   rating?: number;
-
-  /** Phase 3 接入登录后由服务端从会话取，现在先允许前端传 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(40)
-  authorName?: string;
 }

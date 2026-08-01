@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router';
 import { Plus } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import { useAuthStore } from './stores/auth';
 
 const router = useRouter();
 const route = useRoute();
+const authStore = useAuthStore();
 
 const navItems = [
   { to: '/', label: '我的菜谱' },
@@ -18,6 +21,17 @@ const navItems = [
 function isActive(to: string) {
   if (to === '/') return route.path === '/' || route.path.startsWith('/recipes');
   return route.path.startsWith(to);
+}
+
+function handleUserCommand(command: string) {
+  if (command === 'profile') router.push('/profile');
+  if (command === 'logout') logout();
+}
+
+async function logout() {
+  await authStore.logout();
+  ElMessage.success('已退出登录');
+  router.push('/');
 }
 </script>
 
@@ -46,6 +60,20 @@ function isActive(to: string) {
         <el-button type="primary" round :icon="Plus" @click="router.push('/recipes/new')">
           新建菜谱
         </el-button>
+
+        <el-dropdown v-if="authStore.user" class="ih-user" trigger="click" @command="handleUserCommand">
+          <span class="ih-user__trigger">
+            <span class="ih-user__avatar">{{ authStore.user.displayName.slice(0, 1) }}</span>
+            <span class="ih-user__name">{{ authStore.user.displayName }}</span>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="profile">个人信息</el-dropdown-item>
+              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button v-else round class="ih-user" @click="router.push('/login')">登录</el-button>
       </div>
     </header>
     <main class="ih-main">
@@ -133,6 +161,46 @@ function isActive(to: string) {
   color: var(--ih-primary-dark);
   background: var(--ih-primary-light);
   font-weight: 600;
+}
+
+.ih-user {
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+
+.ih-user__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.ih-user__trigger:hover {
+  background: rgba(226, 98, 44, 0.07);
+}
+
+.ih-user__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ih-primary-light);
+  color: var(--ih-primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.ih-user__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ih-text);
+  white-space: nowrap;
 }
 
 @media (max-width: 640px) {

@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { LocalDiskStorage } from './storage/local-disk.storage';
 
@@ -8,6 +10,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.setGlobalPrefix('api/v1');
   app.enableCors({ origin: true, credentials: true });
+  app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

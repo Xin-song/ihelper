@@ -98,6 +98,7 @@ Phase 1 实体化：`spaces`、`users`、`space_members`、`ingredients`、`reci
 |---|---|
 | 2026-07-30 | 初版：菜谱模块首版 Schema（spaces/users/space_members/ingredients/recipes/recipe_ingredients），迁移已在本地验证跑通 |
 | 2026-08-01 | 加 `recipes.visibility`（private/public，广场用）、`recipe_submissions`（作业）、`recipe_print_images`（打印版图）。详见下方第 5 节 |
+| 2026-08-01 | 登录接入：`users.username`（唯一，登录用）、`email` 改选填、`recipes.author_id`。详见下方第 6 节，含一次误删数据的事故记录 |
 
 ---
 
@@ -137,3 +138,45 @@ Phase 1 实体化：`spaces`、`users`、`space_members`、`ingredients`、`reci
 
 **这些语句已全部手工删除。以后每次生成迁移都必须先通读一遍生成的 SQL**，
 确认没有误删手写索引 —— 直接 `migrate dev` 一把梭会静默摧毁全文检索和标签查询的索引。
+
+---
+
+## 6. 第三次迁移（2026-08-01）：登录接入
+
+### 6.1 `users` 表变更
+
+- 加 `username`（唯一，登录用），`email` 从必填改选填 —— 自托管场景不做找回密码邮件，见 ARCHITECTURE.md 4.4。
+- `display_name` 沿用原字段当昵称，没有新增列。
+
+### 6.2 `recipes.author_id`
+
+外键指向 `users.id`，`ON DELETE SET NULL`，允许为空。空值代表「登录接入前建的存量菜谱」，
+应用层按「未认领」放行任何登录用户编辑；一旦写入了 `author_id`，就只有作者本人能改。
+`recipe_submissions.user_id` 走同样的兼容策略，本次迁移没有新加列（该列上一次迁移就有）。
+
+### 6.3 环境非交互导致的 `migrate dev` 不可用，以及由此引出的一次数据丢失事故
+
+**背景**：这次迁移是在非交互式 shell（CI/自动化环境）里做的，`prisma migrate dev`（包括
+`--create-only`）在这种环境下直接拒绝执行，报 "environment is non-interactive"。
+
+**当时的变通做法**：改用 `prisma migrate diff --from-migrations ... --to-schema-datamodel ...
+--shadow-database-url <url> --script` 生成原始 SQL，再手工创建迁移目录、人工过一遍（按 5.4 的规矩
+剔除误删语句）、最后用 `prisma migrate deploy` 应用。这个流程本身是对的。
+
+**事故**：`--shadow-database-url` 参数**误填成了当前开发环境正在用的那个真实数据库连接串**，
+而不是一个一次性的影子库。Prisma 计算 diff 时会把 shadow URL 指向的库当成「可以随意清空重建」的
+临时工作区——它在那上面重放了全部历史迁移文件来还原 schema，这个过程**清空了目标库当时的实际数据**
+（`recipes`、`ingredients`、`recipe_ingredients`、`recipe_submissions` 全部归零；表结构本身没有损坏，
+`_prisma_migrations` 记录也完好）。当时库里的数据后来靠重新走一遍菜谱创建 API 补了回来，
+但如果是生产库，这会是不可逆的真实数据丢失。
+
+**规矩，以后必须遵守**：
+
+1. **`--shadow-database-url` 永远指向一个独立的、可随意丢弃的数据库/schema**，绝不能填当前在用的
+   开发库或生产库连接串。本地开发场景，宁可专门起一个 `ihelper_shadow` 库，或者干脆用
+   `docker run --rm` 起一个一次性 Postgres 容器。
+2. **任何时候要在非交互式环境下生成迁移，先确认能不能改用交互式终端跑标准的
+   `prisma migrate dev --create-only`**——那是官方支持的路径，不需要手动摆弄 shadow 库。
+   只有确认走不通时才退回到 `migrate diff` 这条路，且执行前默念一遍上面第 1 条。
+3. **对着任何数据库连接串类的参数（尤其是名字带 "shadow" "temp" 的），执行前用 `psql \\l` 或等价
+   方式确认目标库确实是空的/一次性的**，不要假设 CLI 参数名暗示的语义会帮你兜底。
