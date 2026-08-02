@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
@@ -8,11 +9,26 @@ const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 
-const navItems = [
-  { to: '/', label: '我的菜谱' },
-  { to: '/square', label: '菜谱广场' },
-  { to: '/submissions', label: '交作业' },
+/**
+ * iHelper 是个人/家庭数据中枢，日程与菜谱是并列的两个「应用」，通过左上角 logo 的悬浮菜单切换。
+ * 后续新增应用（库存台账、生活记录等）就往这个数组里加一项。
+ */
+const appSwitcherItems = [
+  { key: 'cook', label: 'Cook', to: '/' },
+  { key: 'calendar', label: 'Calendar', to: '/schedule' },
 ];
+const currentApp = computed(() => (route.path.startsWith('/schedule') ? 'calendar' : 'cook'));
+
+/** 「库存」是私人管理页面，未登录时不出现在导航里；其余保持原样对匿名用户可见 */
+const cookNavItems = computed(() => {
+  const items = [
+    { to: '/', label: '我的菜谱', requiresAuth: false },
+    { to: '/square', label: '菜谱广场', requiresAuth: false },
+    { to: '/submissions', label: '交作业', requiresAuth: false },
+    { to: '/inventory', label: '库存', requiresAuth: true },
+  ];
+  return items.filter((item) => !item.requiresAuth || authStore.isLoggedIn);
+});
 
 /**
  * 自己算高亮而不是用 RouterLink 的 active-class：后者是前缀匹配，
@@ -21,6 +37,10 @@ const navItems = [
 function isActive(to: string) {
   if (to === '/') return route.path === '/' || route.path.startsWith('/recipes');
   return route.path.startsWith(to);
+}
+
+function handleAppSwitch(to: string) {
+  router.push(to);
 }
 
 function handleUserCommand(command: string) {
@@ -39,15 +59,28 @@ async function logout() {
   <div class="ih-shell">
     <header class="ih-topbar">
       <div class="ih-topbar__inner">
-        <RouterLink to="/" class="ih-brand">
-          <span class="ih-brand__mark">🍲</span>
-          <span class="ih-brand__name">iHelper</span>
-          <span class="ih-brand__sub">菜谱</span>
-        </RouterLink>
+        <el-dropdown trigger="hover" class="ih-brand-dropdown" @command="handleAppSwitch">
+          <RouterLink to="/" class="ih-brand">
+            <span class="ih-brand__mark">🍲</span>
+            <span class="ih-brand__name">iHelper</span>
+          </RouterLink>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="item in appSwitcherItems"
+                :key="item.key"
+                :command="item.to"
+                :class="{ 'is-active': currentApp === item.key }"
+              >
+                {{ item.label }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
 
-        <nav class="ih-nav">
+        <nav v-if="currentApp === 'cook'" class="ih-nav">
           <RouterLink
-            v-for="item in navItems"
+            v-for="item in cookNavItems"
             :key="item.to"
             :to="item.to"
             class="ih-nav__link"
@@ -56,8 +89,15 @@ async function logout() {
             {{ item.label }}
           </RouterLink>
         </nav>
+        <div v-else class="ih-nav-spacer" />
 
-        <el-button type="primary" round :icon="Plus" @click="router.push('/recipes/new')">
+        <el-button
+          v-if="currentApp === 'cook'"
+          type="primary"
+          round
+          :icon="Plus"
+          @click="router.push('/recipes/new')"
+        >
           新建菜谱
         </el-button>
 
@@ -126,10 +166,10 @@ async function logout() {
   letter-spacing: 0.02em;
 }
 
-.ih-brand__sub {
-  font-size: 14px;
-  color: var(--ih-text-secondary);
-  font-weight: 500;
+.ih-brand-dropdown :deep(.el-dropdown-menu__item.is-active) {
+  color: var(--ih-primary-dark);
+  font-weight: 600;
+  background: var(--ih-primary-light);
 }
 
 .ih-nav {
@@ -137,6 +177,11 @@ async function logout() {
   gap: 4px;
   margin-left: 28px;
   margin-right: auto;
+}
+
+.ih-nav-spacer {
+  flex: 1;
+  margin-left: 28px;
 }
 
 .ih-nav__link {

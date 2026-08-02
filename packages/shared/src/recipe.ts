@@ -228,6 +228,32 @@ export interface CreatePrintImageInput {
   orientation: PrintOrientation;
 }
 
+/** 库存物品，REQUIREMENTS.md 2.1（提前做的最小版） */
+export interface StockItemDto {
+  id: string;
+  name: string;
+  category: IngredientCategory;
+  quantity: number;
+  unit: string;
+  safetyStock: number | null;
+  note: string | null;
+  /** 派生字段：quantity < safetyStock，采购清单按这个过滤 */
+  isLowStock: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStockItemInput {
+  name: string;
+  category: IngredientCategory;
+  quantity: number;
+  unit: string;
+  safetyStock?: number;
+  note?: string;
+}
+
+export type UpdateStockItemInput = Partial<CreateStockItemInput>;
+
 /** 上传接口的返回形状 */
 export interface UploadedImageDto {
   url: string;

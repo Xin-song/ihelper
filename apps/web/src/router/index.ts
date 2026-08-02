@@ -47,6 +47,18 @@ const router = createRouter({
       component: () => import('../views/SquareView.vue'),
     },
     {
+      path: '/inventory',
+      name: 'inventory',
+      component: () => import('../views/InventoryView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/schedule',
+      name: 'schedule',
+      component: () => import('../views/ScheduleView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/submissions',
       name: 'submissions',
       component: () => import('../views/SubmissionFeedView.vue'),

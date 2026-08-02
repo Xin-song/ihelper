@@ -99,6 +99,8 @@ Phase 1 实体化：`spaces`、`users`、`space_members`、`ingredients`、`reci
 | 2026-07-30 | 初版：菜谱模块首版 Schema（spaces/users/space_members/ingredients/recipes/recipe_ingredients），迁移已在本地验证跑通 |
 | 2026-08-01 | 加 `recipes.visibility`（private/public，广场用）、`recipe_submissions`（作业）、`recipe_print_images`（打印版图）。详见下方第 5 节 |
 | 2026-08-01 | 登录接入：`users.username`（唯一，登录用）、`email` 改选填、`recipes.author_id`。详见下方第 6 节，含一次误删数据的事故记录 |
+| 2026-08-01 | 新增 `stock_items`（库存物品，Phase 2 提前做的最小版）。详见下方第 7 节 |
+| 2026-08-02 | 新增 `tasks`（待办）、`calendar_events`（日程事件），Phase 2「待办与日程」最小版。详见下方第 8 节 |
 
 ---
 
@@ -180,3 +182,52 @@ Phase 1 实体化：`spaces`、`users`、`space_members`、`ingredients`、`reci
    只有确认走不通时才退回到 `migrate diff` 这条路，且执行前默念一遍上面第 1 条。
 3. **对着任何数据库连接串类的参数（尤其是名字带 "shadow" "temp" 的），执行前用 `psql \\l` 或等价
    方式确认目标库确实是空的/一次性的**，不要假设 CLI 参数名暗示的语义会帮你兜底。
+
+---
+
+## 7. 第四次迁移（2026-08-01）：库存管理最小版
+
+### 7.1 `stock_items`
+
+Phase 2「消耗品库存」的最小子集，REQUIREMENTS.md 2.1 有完整字段清单和「还没做」列表。这次只落了：
+
+- `category` 复用 `packages/shared` 的 `INGREDIENT_CATEGORIES`，没有单独建库存分类枚举——两边概念本来就重叠
+  （冰箱里的东西大多也是食材），不重复定义一套。
+- `quantity` / `safety_stock` 都是 `DECIMAL(10,3)`，跟 `recipes.servings`、`recipe_ingredients.quantity` 同规格，
+  允许非整数（比如 0.5 袋）。`CHECK (>= 0)` 手写在迁移里，DSL 表达不了。
+- `safety_stock` 可空：不设阈值就不参与「采购清单」的判定，不是「阈值为 0」。
+- 没有 `ingredient_id` 外键——`name` 是自由文本。库存物品和食材主数据是不是该合并成一件事，
+  这次没有定论，故意留了口子：现在物品名和食材名可能对不上（比如库存叫「土豆」，食材库叫「马铃薯」），
+  这是已知的妥协，不是疏漏。
+- 「采购清单」（`quantity < safety_stock` 的物品）是查询时过滤出来的派生结果，没有单独建表，
+  跟 `recipe_submissions.like_count` 用计数器而非关联表的理由一样：不为不存在的场景（比如采购清单的
+  勾选状态、历史记录）提前建模型。
+
+### 7.2 这次迁移是怎么正确生成的（对照 6.3 的事故）
+
+这次同样是非交互式环境、同样用 `prisma migrate diff --shadow-database-url`，但这次按 6.3 定下的规矩，
+先在同一个 Postgres 实例里建了一个专用的一次性库（`CREATE DATABASE ihelper_shadow`），
+把 `--shadow-database-url` 指向它，diff 跑完确认没问题后 `DROP DATABASE ihelper_shadow`。
+全程没有碰真实开发库，迁移前后 `recipes`/`users` 的行数核对一致。
+
+---
+
+## 8. 第五次迁移（2026-08-02）：待办与日程最小版
+
+### 8.1 `tasks` / `calendar_events`
+
+REQUIREMENTS.md 3.1/3.2 的最小子集，对照 ROADMAP.md 一贯的「先最小可用」取舍：
+
+- 两张表都按 `user_id`（而非 `space_id`）过滤查询——待办和日程是私人数据，不像菜谱那样默认对整个
+  space 可见。`space_id` 字段仍然保留（默认值同其他表），只是不作为主要查询条件，为 Phase 3
+  家庭空间共享待办留口子。
+- `tasks.status` 用 `todo/in_progress/done/cancelled` 四态而不是布尔完成标记，「正在进行的工作」
+  直接映射到 `in_progress`，不用额外建模型。
+- `tasks.priority`、`status` 都复用 `recipes`/`stock_items` 的老规矩：DB 里是 `TEXT`，
+  合法值校验放应用层（`packages/shared` 的 `TASK_PRIORITIES`/`TASK_STATUSES`）。
+- `calendar_events` 加了 `CHECK (end_at >= start_at)`，DSL 表达不了，手写在迁移里；应用层
+  （`CalendarEventsService.assertValidRange`）也重复校验一遍，避免用户直接从 DB 约束报错里看到一坨 SQL。
+- 索引按查询模式选：日历视图是「某用户 + 某时间范围」，所以是 `(user_id, due_at)` /
+  `(user_id, start_at)` 局部索引，而不是照抄其他表的 `space_id` 单列索引。
+- **没做**（留在 ROADMAP 的「还没做」清单）：子任务（一层嵌套）、重复规则（每天/每周/每月）、
+  「系统生成待办」的来源标记与跳回（比如低库存生成的采购待办）、iCal 订阅导出、提醒推送。

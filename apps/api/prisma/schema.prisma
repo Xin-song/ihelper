@@ -14,9 +14,12 @@ model Space {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  members     SpaceMember[]
-  ingredients Ingredient[]
-  recipes     Recipe[]
+  members        SpaceMember[]
+  ingredients    Ingredient[]
+  recipes        Recipe[]
+  stockItems     StockItem[]
+  tasks          Task[]
+  calendarEvents CalendarEvent[]
 
   @@map("spaces")
 }
@@ -36,6 +39,8 @@ model User {
   memberships     SpaceMember[]
   submissions     RecipeSubmission[]
   authoredRecipes Recipe[]           @relation("RecipeAuthor")
+  tasks           Task[]
+  calendarEvents  CalendarEvent[]
 
   @@map("users")
 }
@@ -192,4 +197,74 @@ model RecipeIngredient {
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
 
   @@map("recipe_ingredients")
+}
+
+/// 库存物品，REQUIREMENTS.md 2.1（Phase 2 提前做的最小版：分类 + 数量 + 安全库存）
+model StockItem {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  spaceId     String    @default("00000000-0000-0000-0000-000000000001") @map("space_id") @db.Uuid
+  name        String
+  /// 复用食材分类，见 packages/shared 的 INGREDIENT_CATEGORIES
+  category    String
+  /// CHECK (quantity >= 0) 在迁移 SQL 里补
+  quantity    Decimal   @default(0) @db.Decimal(10, 3)
+  unit        String
+  /// 安全库存，低于这个值就进采购清单；为空表示不设阈值、不提醒。CHECK (safety_stock >= 0) 在迁移 SQL 里补
+  safetyStock Decimal?  @map("safety_stock") @db.Decimal(10, 3)
+  note        String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  space Space @relation(fields: [spaceId], references: [id])
+
+  @@map("stock_items")
+}
+
+/// 待办，REQUIREMENTS.md 3.1（Phase 2 最小版：不含子任务、重复规则、系统生成溯源）
+model Task {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  spaceId     String    @default("00000000-0000-0000-0000-000000000001") @map("space_id") @db.Uuid
+  /// 待办是私人数据，按 userId 过滤，不像 Recipe 那样对全 space 可见
+  userId      String    @map("user_id") @db.Uuid
+  title       String
+  description String?
+  /// 截止时间，为空表示无截止日期的待办
+  dueAt       DateTime? @map("due_at") @db.Timestamptz
+  /// low / medium / high，应用层校验，见 packages/shared
+  priority    String    @default("medium")
+  /// todo / in_progress / done / cancelled
+  status      String    @default("todo")
+  tags        String[]  @default([])
+  completedAt DateTime? @map("completed_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  space Space @relation(fields: [spaceId], references: [id])
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}
+
+/// 纯日程事件（有起止时间、无完成状态），REQUIREMENTS.md 3.2
+model CalendarEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  spaceId     String    @default("00000000-0000-0000-0000-000000000001") @map("space_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  title       String
+  description String?
+  location    String?
+  startAt     DateTime  @map("start_at") @db.Timestamptz
+  endAt       DateTime  @map("end_at") @db.Timestamptz
+  /// CHECK (end_at >= start_at) 在迁移 SQL 里补
+  allDay      Boolean   @default(false) @map("all_day")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  space Space @relation(fields: [spaceId], references: [id])
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("calendar_events")
 }
