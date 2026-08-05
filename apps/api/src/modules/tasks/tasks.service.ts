@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DEFAULT_SPACE_ID } from '@ihelper/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -8,17 +8,18 @@ import { FindTasksDto } from './dto/find-tasks.dto';
 type RawTask = {
   dueAt: Date | null;
   status: string;
+  archivedAt: Date | null;
   [key: string]: unknown;
 };
 
-/** isOverdue 是纯派生字段：有截止时间、未完成/取消、且已过期，不单独存字段 */
+/** isOverdue / isArchived 都是纯派生字段，不单独暴露内部时间戳语义给前端猜 */
 function serialize<T extends RawTask>(task: T) {
   const isOverdue =
     task.dueAt !== null &&
     task.dueAt.getTime() < Date.now() &&
     task.status !== 'done' &&
     task.status !== 'cancelled';
-  return { ...task, isOverdue };
+  return { ...task, isOverdue, isArchived: task.archivedAt !== null };
 }
 
 @Injectable()
@@ -32,6 +33,7 @@ export class TasksService {
         userId,
         deletedAt: null,
         status: query.status,
+        topicId: query.topicId,
         dueAt: query.from || query.to ? { gte: query.from, lte: query.to } : undefined,
       },
       orderBy: [{ dueAt: 'asc' }, { createdAt: 'desc' }],
@@ -50,6 +52,7 @@ export class TasksService {
         userId,
         title: dto.title,
         description: dto.description,
+        topicId: dto.topicId,
         dueAt: dto.dueAt,
         priority: dto.priority,
         status: dto.status,
@@ -68,16 +71,36 @@ export class TasksService {
         : dto.status && dto.status !== 'done'
           ? null
           : undefined;
+    /** archived 三态推导，同 completedAt 的写法：true→打时间戳，false→清空，未传→不改动 */
+    const archivedAt =
+      dto.archived === true ? new Date() : dto.archived === false ? null : undefined;
+
+    const resultingStart =
+      dto.scheduledStartAt === undefined ? existing.scheduledStartAt : dto.scheduledStartAt;
+    const resultingEnd =
+      dto.scheduledEndAt === undefined ? existing.scheduledEndAt : dto.scheduledEndAt;
+    if (
+      resultingStart &&
+      resultingEnd &&
+      new Date(resultingEnd).getTime() < new Date(resultingStart).getTime()
+    ) {
+      throw new BadRequestException('时间轴结束时间不能早于开始时间');
+    }
+
     const updated = await this.prisma.task.update({
       where: { id },
       data: {
         title: dto.title,
         description: dto.description,
+        topicId: dto.topicId,
         dueAt: dto.dueAt,
         priority: dto.priority,
         status: dto.status,
         tags: dto.tags,
         completedAt,
+        archivedAt,
+        scheduledStartAt: dto.scheduledStartAt,
+        scheduledEndAt: dto.scheduledEndAt,
       },
     });
     return serialize(updated);

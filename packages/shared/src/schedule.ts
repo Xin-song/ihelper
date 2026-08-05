@@ -22,11 +22,13 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   high: '高',
 };
 
-/** 待办，REQUIREMENTS.md 3.1（最小版：不含子任务、重复规则、系统生成溯源） */
+/** 待办，REQUIREMENTS.md 3.1（子任务=主题下的待办事项本身，不做更深一层嵌套） */
 export interface TaskDto {
   id: string;
   title: string;
   description: string | null;
+  /** 所属主题（待办事项主题看板的「文件夹」），null 表示未分组 */
+  topicId: string | null;
   dueAt: string | null;
   priority: TaskPriority;
   status: TaskStatus;
@@ -36,18 +38,60 @@ export interface TaskDto {
   updatedAt: string;
   /** 派生字段：有截止时间、未完成/取消、且已过期 */
   isOverdue: boolean;
+  archivedAt: string | null;
+  /** 派生字段：archivedAt !== null */
+  isArchived: boolean;
+  /** 放入「今日日程管理」时间轴的起止时间，两者同时为空表示未放入时间轴 */
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
 }
 
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  topicId?: string;
   dueAt?: string;
   priority?: TaskPriority;
   status?: TaskStatus;
   tags?: string[];
 }
 
-export type UpdateTaskInput = Partial<CreateTaskInput>;
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  /** 传 null 移出当前主题，传 undefined 不改动 */
+  topicId?: string | null;
+  dueAt?: string;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  tags?: string[];
+  /** true 归档 / false 取消归档 */
+  archived?: boolean;
+  /** 传 null 清空（移出今日日程时间轴） */
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+}
+
+/** 待办事项主题（主题看板的「文件夹」），REQUIREMENTS.md 3.1「所属项目/清单」的落地 */
+export interface TaskTopicDto {
+  id: string;
+  name: string;
+  color: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaskTopicInput {
+  name: string;
+  color?: string;
+}
+
+export interface UpdateTaskTopicInput {
+  name?: string;
+  color?: string;
+  sortOrder?: number;
+}
 
 /** 纯日程事件（有起止时间、无完成状态），REQUIREMENTS.md 3.2 */
 export interface CalendarEventDto {

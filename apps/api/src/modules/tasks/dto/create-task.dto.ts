@@ -5,6 +5,7 @@ import {
   IsISO8601,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -20,6 +21,10 @@ export class CreateTaskDto {
   @IsString()
   @MaxLength(2000)
   description?: string;
+
+  @IsOptional()
+  @IsUUID()
+  topicId?: string;
 
   @IsOptional()
   @IsISO8601()

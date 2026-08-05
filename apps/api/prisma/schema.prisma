@@ -19,6 +19,7 @@ model Space {
   recipes        Recipe[]
   stockItems     StockItem[]
   tasks          Task[]
+  taskTopics     TaskTopic[]
   calendarEvents CalendarEvent[]
 
   @@map("spaces")
@@ -40,6 +41,7 @@ model User {
   submissions     RecipeSubmission[]
   authoredRecipes Recipe[]           @relation("RecipeAuthor")
   tasks           Task[]
+  taskTopics      TaskTopic[]
   calendarEvents  CalendarEvent[]
 
   @@map("users")
@@ -221,13 +223,16 @@ model StockItem {
   @@map("stock_items")
 }
 
-/// 待办，REQUIREMENTS.md 3.1（Phase 2 最小版：不含子任务、重复规则、系统生成溯源）
+/// 待办，REQUIREMENTS.md 3.1（子任务=主题下的待办事项本身，不做更深一层嵌套；见 docs/DATABASE.md）
 model Task {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   spaceId     String    @default("00000000-0000-0000-0000-000000000001") @map("space_id") @db.Uuid
   /// 待办是私人数据，按 userId 过滤，不像 Recipe 那样对全 space 可见
   userId      String    @map("user_id") @db.Uuid
+  /// 所属主题（待办事项主题看板的「文件夹」），为空表示未分组，见 TaskTopic
+  topicId     String?   @map("topic_id") @db.Uuid
   title       String
+  /// 详情/备注，主题看板 UI 里叫「详情备注」
   description String?
   /// 截止时间，为空表示无截止日期的待办
   dueAt       DateTime? @map("due_at") @db.Timestamptz
@@ -237,14 +242,41 @@ model Task {
   status      String    @default("todo")
   tags        String[]  @default([])
   completedAt DateTime? @map("completed_at") @db.Timestamptz
+  /// 归档标记，归档后不在主题看板总览视图展示，只在 Archived 视图可见
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz
+  /// 放入「今日日程管理」时间轴上的起止时间，两者同时为空表示未放入时间轴
+  scheduledStartAt DateTime? @map("scheduled_start_at") @db.Timestamptz
+  scheduledEndAt   DateTime? @map("scheduled_end_at") @db.Timestamptz
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
 
-  space Space @relation(fields: [spaceId], references: [id])
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  space Space      @relation(fields: [spaceId], references: [id])
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic TaskTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
   @@map("tasks")
+}
+
+/// 待办事项主题（主题看板的「文件夹」），REQUIREMENTS.md 3.1「所属项目/清单」的落地
+model TaskTopic {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  spaceId   String    @default("00000000-0000-0000-0000-000000000001") @map("space_id") @db.Uuid
+  /// 私人数据，按 userId 过滤，同 Task
+  userId    String    @map("user_id") @db.Uuid
+  name      String
+  /// 看板展示用的强调色，可选
+  color     String?
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  space Space  @relation(fields: [spaceId], references: [id])
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@map("task_topics")
 }
 
 /// 纯日程事件（有起止时间、无完成状态），REQUIREMENTS.md 3.2

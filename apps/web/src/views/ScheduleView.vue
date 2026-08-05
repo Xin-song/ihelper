@@ -12,8 +12,9 @@ import {
 } from '@ihelper/shared';
 import { tasksApi } from '../api/tasks';
 import { calendarEventsApi } from '../api/calendar-events';
+import TaskTopicBoard from '../components/task-board/TaskTopicBoard.vue';
 
-const activeTab = ref<'calendar' | 'board' | 'tasks'>('calendar');
+const activeTab = ref<'calendar' | 'board' | 'tasks' | 'topics'>('calendar');
 
 /* ---------- 日期工具：原生 Date，不引入新依赖 ---------- */
 function startOfDay(d: Date) {
@@ -653,6 +654,10 @@ onMounted(loadAllTasks);
             <el-button text :icon="Delete" @click="deleteTask(task)" />
           </div>
         </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="主题看板" name="topics">
+        <TaskTopicBoard v-if="activeTab === 'topics'" />
       </el-tab-pane>
     </el-tabs>
 

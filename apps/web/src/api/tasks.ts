@@ -5,6 +5,7 @@ export interface FindTasksParams {
   status?: TaskStatus;
   from?: string;
   to?: string;
+  topicId?: string;
 }
 
 export const tasksApi = {

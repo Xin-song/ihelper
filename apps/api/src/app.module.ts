@@ -7,6 +7,7 @@ import { IngredientsModule } from './modules/ingredients/ingredients.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { RecipesModule } from './modules/recipes/recipes.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
+import { TaskTopicsModule } from './modules/task-topics/task-topics.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 
@@ -20,6 +21,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     InventoryModule,
     RecipesModule,
     SubmissionsModule,
+    TaskTopicsModule,
     TasksModule,
     UploadsModule,
   ],
