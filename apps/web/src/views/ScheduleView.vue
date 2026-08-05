@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, provide, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, ArrowRight, Delete, Plus } from '@element-plus/icons-vue';
+import { ArrowLeft, ArrowRight, Plus } from '@element-plus/icons-vue';
 import type { CalendarEventDto, TaskDto, TaskPriority, TaskStatus } from '@ihelper/shared';
 import {
   TASK_PRIORITIES,
@@ -10,11 +10,22 @@ import {
   TASK_STATUS_LABELS,
   getUsFederalHolidays,
 } from '@ihelper/shared';
-import { tasksApi } from '../api/tasks';
 import { calendarEventsApi } from '../api/calendar-events';
-import TaskTopicBoard from '../components/task-board/TaskTopicBoard.vue';
+import { TASK_BOARD_CONTEXT_KEY } from '../components/task-board/context';
+import { createTaskBoardState } from '../components/task-board/useTaskBoardState';
+import TodayScheduleBoard from '../components/task-board/TodayScheduleBoard.vue';
+import TopicFolderList from '../components/task-board/TopicFolderList.vue';
 
-const activeTab = ref<'calendar' | 'board' | 'tasks' | 'topics'>('calendar');
+const activeTab = ref<'calendar' | 'board' | 'tasks' | 'today' | 'archived'>('calendar');
+
+/**
+ * 待办事项主题、待办事项本身：整页共用同一份响应式数据，provide 给所有 tab（含
+ * 「待办」「今日日程管理」「Archived」这几个由 task-board 组件渲染的 tab，以及本文件里
+ * 「日历」「看板」两个 tab 的展示逻辑），任意一处改了状态，其余 tab 读的是同一份数据，
+ * 不需要各自 reload 就能同步。
+ */
+const board = createTaskBoardState();
+provide(TASK_BOARD_CONTEXT_KEY, board);
 
 /* ---------- 日期工具：原生 Date，不引入新依赖 ---------- */
 function startOfDay(d: Date) {
@@ -79,8 +90,9 @@ const viewMode = ref<ViewMode>('month');
 const anchorDate = ref(new Date());
 const calendarLoading = ref(true);
 const rangeEvents = ref<CalendarEventDto[]>([]);
-const rangeTasks = ref<TaskDto[]>([]);
 const weekdayLabels = ['一', '二', '三', '四', '五', '六', '日'];
+/** 月视图每个格子最多显示的条目数，超过折成「+N 更多」；格子所在的那一整行会跟着一起变高 */
+const MONTH_CELL_MAX_ITEMS = 6;
 
 const monthWeeks = computed(() => {
   const gridStart = startOfWeek(startOfMonth(anchorDate.value));
@@ -129,9 +141,12 @@ const rangeLabel = computed(() => {
   });
 });
 
+/** 待办按 dueAt 落在日历上；已归档的待办不再占用日历格子 */
 function itemsForDay(day: Date) {
   const key = dateKey(day);
-  const tasks = rangeTasks.value.filter((t) => t.dueAt && dateKey(new Date(t.dueAt)) === key);
+  const tasks = board.tasks.value.filter(
+    (t) => !t.isArchived && t.dueAt && dateKey(new Date(t.dueAt)) === key,
+  );
   const events = rangeEvents.value.filter((e) => {
     const s = startOfDay(new Date(e.startAt)).getTime();
     const en = startOfDay(new Date(e.endAt)).getTime();
@@ -141,16 +156,12 @@ function itemsForDay(day: Date) {
   return { tasks, events };
 }
 
+/** 待办的数据来自全页共用的 board，这里只需要按范围拉纯日程事件 */
 async function loadRange() {
   calendarLoading.value = true;
   const params = { from: range.value.from.toISOString(), to: range.value.to.toISOString() };
   try {
-    const [events, tasks] = await Promise.all([
-      calendarEventsApi.list(params),
-      tasksApi.list(params),
-    ]);
-    rangeEvents.value = events;
-    rangeTasks.value = tasks;
+    rangeEvents.value = await calendarEventsApi.list(params);
   } catch (error) {
     ElMessage.error((error as Error).message);
   } finally {
@@ -205,94 +216,25 @@ function byPriorityDesc(a: TaskDto, b: TaskDto) {
 }
 function tasksDueOn(day: Date) {
   const key = dateKey(day);
-  return allTasks.value.filter((t) => t.dueAt && dateKey(new Date(t.dueAt)) === key).sort(byPriorityDesc);
+  return board.tasks.value
+    .filter((t) => !t.isArchived && t.dueAt && dateKey(new Date(t.dueAt)) === key)
+    .sort(byPriorityDesc);
 }
 const inProgressTasks = computed(() =>
-  [...allTasks.value.filter((t) => t.status === 'in_progress')].sort(byPriorityDesc),
+  [...board.tasks.value.filter((t) => !t.isArchived && t.status === 'in_progress')].sort(byPriorityDesc),
 );
 
-/* ---------- 待办 tab ---------- */
-const taskFilter = ref<'all' | 'in_progress' | 'done' | 'overdue'>('all');
-const allTasks = ref<TaskDto[]>([]);
-const tasksLoading = ref(true);
-const quickTitle = ref('');
-const quickDue = ref<Date | null>(null);
-
-async function loadAllTasks() {
-  tasksLoading.value = true;
-  try {
-    allTasks.value = await tasksApi.list();
-  } catch (error) {
-    ElMessage.error((error as Error).message);
-  } finally {
-    tasksLoading.value = false;
-  }
-}
-
-const overdueCount = computed(() => allTasks.value.filter((t) => t.isOverdue).length);
-
-const filteredTasks = computed(() => {
-  let list = allTasks.value;
-  if (taskFilter.value === 'in_progress') list = list.filter((t) => t.status === 'in_progress');
-  else if (taskFilter.value === 'done') list = list.filter((t) => t.status === 'done');
-  else if (taskFilter.value === 'overdue') list = list.filter((t) => t.isOverdue);
-  return [...list].sort((a, b) => {
-    if (!a.dueAt && !b.dueAt) return 0;
-    if (!a.dueAt) return 1;
-    if (!b.dueAt) return -1;
-    return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
-  });
-});
-
-async function quickAddTask() {
-  if (!quickTitle.value.trim()) return;
-  try {
-    const created = await tasksApi.create({
-      title: quickTitle.value.trim(),
-      dueAt: quickDue.value ? quickDue.value.toISOString() : undefined,
-    });
-    allTasks.value = [created, ...allTasks.value];
-    quickTitle.value = '';
-    quickDue.value = null;
-    loadRange();
-  } catch (error) {
-    ElMessage.error((error as Error).message);
-  }
-}
-
-function handleStatusChange(task: TaskDto, value: string | number | boolean) {
-  setTaskStatus(task, value as TaskStatus);
-}
-
-async function setTaskStatus(task: TaskDto, status: TaskStatus) {
-  try {
-    const updated = await tasksApi.update(task.id, { status });
-    const idx = allTasks.value.findIndex((t) => t.id === task.id);
-    if (idx !== -1) allTasks.value[idx] = updated;
-    loadRange();
-  } catch (error) {
-    ElMessage.error((error as Error).message);
-  }
-}
-
-async function deleteTask(task: TaskDto) {
-  try {
-    await ElMessageBox.confirm(`确定删除待办「${task.title}」吗？`, '删除待办', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-    });
-  } catch {
+/* ---------- 新建主题弹窗：「待办」「Archived」两个 tab 共用 ---------- */
+const newTopicVisible = ref(false);
+const newTopicForm = reactive({ name: '', color: '#e2622c' });
+async function submitNewTopic() {
+  if (!newTopicForm.name.trim()) {
+    ElMessage.warning('主题名称不能为空');
     return;
   }
-  try {
-    await tasksApi.remove(task.id);
-    allTasks.value = allTasks.value.filter((t) => t.id !== task.id);
-    loadRange();
-    ElMessage.success('已删除');
-  } catch (error) {
-    ElMessage.error((error as Error).message);
-  }
+  await board.createTopic(newTopicForm.name.trim(), newTopicForm.color);
+  newTopicVisible.value = false;
+  newTopicForm.name = '';
 }
 
 /* ---------- 新建/编辑弹窗（待办 + 日程事件共用一个弹窗，type 切换） ---------- */
@@ -377,8 +319,8 @@ async function submitItem() {
         status: itemForm.status,
         tags: itemForm.tags,
       };
-      if (editingTask.value) await tasksApi.update(editingTask.value.id, payload);
-      else await tasksApi.create(payload);
+      if (editingTask.value) await board.updateTask(editingTask.value.id, payload);
+      else await board.createTask(payload);
     } else {
       if (!itemForm.startAt || !itemForm.endAt) {
         ElMessage.warning('请选择开始和结束时间');
@@ -400,10 +342,10 @@ async function submitItem() {
       };
       if (editingEvent.value) await calendarEventsApi.update(editingEvent.value.id, payload);
       else await calendarEventsApi.create(payload);
+      await loadRange();
     }
     ElMessage.success('已保存');
     itemFormVisible.value = false;
-    await Promise.all([loadRange(), loadAllTasks()]);
   } catch (error) {
     ElMessage.error((error as Error).message);
   } finally {
@@ -412,8 +354,13 @@ async function submitItem() {
 }
 
 async function deleteEditingItem() {
-  const isTask = !!editingTask.value;
-  const target = editingTask.value ?? editingEvent.value;
+  if (editingTask.value) {
+    const target = editingTask.value;
+    itemFormVisible.value = false;
+    await board.deleteTask(target);
+    return;
+  }
+  const target = editingEvent.value;
   if (!target) return;
   try {
     await ElMessageBox.confirm(`确定删除「${target.title}」吗？`, '删除', {
@@ -425,17 +372,14 @@ async function deleteEditingItem() {
     return;
   }
   try {
-    if (isTask) await tasksApi.remove(target.id);
-    else await calendarEventsApi.remove(target.id);
+    await calendarEventsApi.remove(target.id);
     itemFormVisible.value = false;
-    await Promise.all([loadRange(), loadAllTasks()]);
+    await loadRange();
     ElMessage.success('已删除');
   } catch (error) {
     ElMessage.error((error as Error).message);
   }
 }
-
-onMounted(loadAllTasks);
 </script>
 
 <template>
@@ -445,7 +389,16 @@ onMounted(loadAllTasks);
         <h1 class="ih-heading ih-page-title">日程</h1>
         <p class="ih-muted">日历、待办、DDL 放在一起管理</p>
       </div>
-      <el-button type="primary" round :icon="Plus" @click="openCreate()">添加</el-button>
+      <el-button
+        v-if="activeTab === 'tasks' || activeTab === 'archived'"
+        type="primary"
+        round
+        :icon="Plus"
+        @click="newTopicVisible = true"
+      >
+        新建主题
+      </el-button>
+      <el-button v-else type="primary" round :icon="Plus" @click="openCreate()">添加</el-button>
     </div>
 
     <el-tabs v-model="activeTab">
@@ -480,23 +433,26 @@ onMounted(loadAllTasks);
             <span v-if="holidayNameForDay(day)" class="ih-holiday-label">{{ holidayNameForDay(day) }}</span>
             <div class="ih-month-cell__items">
               <span
-                v-for="e in itemsForDay(day).events.slice(0, 3)"
+                v-for="e in itemsForDay(day).events.slice(0, MONTH_CELL_MAX_ITEMS)"
                 :key="'e' + e.id"
                 class="ih-schedule-dot ih-schedule-dot--event"
                 >{{ e.title }}</span
               >
               <span
-                v-for="t in itemsForDay(day).tasks.slice(0, 3 - Math.min(3, itemsForDay(day).events.length))"
+                v-for="t in itemsForDay(day).tasks.slice(
+                  0,
+                  MONTH_CELL_MAX_ITEMS - Math.min(MONTH_CELL_MAX_ITEMS, itemsForDay(day).events.length),
+                )"
                 :key="'t' + t.id"
                 class="ih-schedule-dot ih-schedule-dot--task"
                 :class="{ 'ih-schedule-dot--overdue': t.isOverdue }"
                 >{{ t.title }}</span
               >
               <span
-                v-if="itemsForDay(day).tasks.length + itemsForDay(day).events.length > 3"
+                v-if="itemsForDay(day).tasks.length + itemsForDay(day).events.length > MONTH_CELL_MAX_ITEMS"
                 class="ih-muted ih-month-cell__more"
               >
-                +{{ itemsForDay(day).tasks.length + itemsForDay(day).events.length - 3 }} 更多
+                +{{ itemsForDay(day).tasks.length + itemsForDay(day).events.length - MONTH_CELL_MAX_ITEMS }} 更多
               </span>
             </div>
           </div>
@@ -590,74 +546,16 @@ onMounted(loadAllTasks);
         </div>
       </el-tab-pane>
 
-      <el-tab-pane name="tasks">
-        <template #label>
-          待办
-          <el-badge v-if="overdueCount" :value="overdueCount" class="ih-schedule-tabs__badge" />
-        </template>
-
-        <div class="ih-task-quickadd">
-          <el-input
-            v-model="quickTitle"
-            placeholder="快速添加待办，回车即可"
-            maxlength="200"
-            @keyup.enter="quickAddTask"
-          />
-          <el-date-picker
-            v-model="quickDue"
-            type="datetime"
-            placeholder="截止时间（可选）"
-            style="width: 200px"
-          />
-          <el-button type="primary" round :icon="Plus" @click="quickAddTask">添加</el-button>
-        </div>
-
-        <el-radio-group v-model="taskFilter" class="ih-task-filter">
-          <el-radio-button label="all">全部</el-radio-button>
-          <el-radio-button label="in_progress">进行中</el-radio-button>
-          <el-radio-button label="done">已完成</el-radio-button>
-          <el-radio-button label="overdue">已逾期</el-radio-button>
-        </el-radio-group>
-
-        <div v-if="tasksLoading" class="ih-task-list">
-          <div v-for="i in 4" :key="i" class="ih-skeleton ih-card"></div>
-        </div>
-        <el-empty v-else-if="filteredTasks.length === 0" description="没有待办事项" class="ih-empty" />
-        <div v-else class="ih-task-list">
-          <div
-            v-for="task in filteredTasks"
-            :key="task.id"
-            class="ih-task-row ih-card"
-            :class="{ 'ih-task-row--overdue': task.isOverdue, 'ih-task-row--done': task.status === 'done' }"
-          >
-            <el-select
-              :model-value="task.status"
-              size="small"
-              class="ih-task-row__status"
-              @change="handleStatusChange(task, $event)"
-            >
-              <el-option v-for="s in TASK_STATUSES" :key="s" :value="s" :label="TASK_STATUS_LABELS[s]" />
-            </el-select>
-
-            <div class="ih-task-row__main" @click="openEditTask(task)">
-              <span class="ih-task-row__title">{{ task.title }}</span>
-              <span class="ih-chip" :class="`ih-chip--priority-${task.priority}`">{{
-                TASK_PRIORITY_LABELS[task.priority]
-              }}</span>
-              <span v-for="tag in task.tags" :key="tag" class="ih-chip ih-chip--muted">{{ tag }}</span>
-            </div>
-
-            <span v-if="task.dueAt" class="ih-task-row__due" :class="{ 'ih-task-row__due--overdue': task.isOverdue }">
-              {{ new Date(task.dueAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
-            </span>
-
-            <el-button text :icon="Delete" @click="deleteTask(task)" />
-          </div>
-        </div>
+      <el-tab-pane label="待办" name="tasks">
+        <TopicFolderList mode="overview" />
       </el-tab-pane>
 
-      <el-tab-pane label="主题看板" name="topics">
-        <TaskTopicBoard v-if="activeTab === 'topics'" />
+      <el-tab-pane label="今日日程管理" name="today">
+        <TodayScheduleBoard />
+      </el-tab-pane>
+
+      <el-tab-pane label="Archived" name="archived">
+        <TopicFolderList mode="archived" />
       </el-tab-pane>
     </el-tabs>
 
@@ -791,6 +689,22 @@ onMounted(loadAllTasks);
         >
       </template>
     </el-dialog>
+
+    <!-- 新建主题 -->
+    <el-dialog v-model="newTopicVisible" title="新建主题" width="min(420px, 92vw)">
+      <el-form label-position="top">
+        <el-form-item label="主题名称" required>
+          <el-input v-model="newTopicForm.name" maxlength="100" @keyup.enter="submitNewTopic" />
+        </el-form-item>
+        <el-form-item label="强调色">
+          <el-color-picker v-model="newTopicForm.color" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button round @click="newTopicVisible = false">取消</el-button>
+        <el-button type="primary" round @click="submitNewTopic">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -827,10 +741,6 @@ onMounted(loadAllTasks);
   font-weight: 600;
   margin-left: 4px;
   white-space: nowrap;
-}
-
-.ih-schedule-tabs__badge {
-  margin-left: 6px;
 }
 
 /* 月视图 */
@@ -891,11 +801,15 @@ onMounted(loadAllTasks);
   justify-content: center;
 }
 
+/**
+ * 不设固定高度，只靠内容撑开：CSS Grid 的隐式行默认按整行里最高的格子撑高（配合
+ * grid 默认 align-items: stretch，同一行的其它格子会跟着拉伸到相同高度），
+ * 这样「一行动态变高、最多显示 6 条、超出显示 +N 更多」不需要额外布局代码。
+ */
 .ih-month-cell__items {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow: hidden;
 }
 
 .ih-schedule-dot {
@@ -1020,6 +934,11 @@ onMounted(loadAllTasks);
   font-size: 12px;
 }
 
+.ih-task-row__due--overdue {
+  color: #c45c5c;
+  font-weight: 600;
+}
+
 @media (max-width: 900px) {
   .ih-board {
     grid-template-columns: repeat(2, 1fr);
@@ -1072,76 +991,6 @@ onMounted(loadAllTasks);
   flex: 1;
 }
 
-/* 待办 tab */
-.ih-task-quickadd {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.ih-task-filter {
-  margin-bottom: 14px;
-}
-
-.ih-task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ih-skeleton {
-  height: 56px;
-  background: linear-gradient(100deg, #f3ede3 30%, #efe6d9 50%, #f3ede3 70%);
-  background-size: 200% 100%;
-  animation: ih-shimmer 1.4s ease-in-out infinite;
-}
-
-@keyframes ih-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-.ih-task-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  flex-wrap: wrap;
-}
-
-.ih-task-row--overdue {
-  border-color: #e3a5a5;
-  background: #fdf5f5;
-}
-
-.ih-task-row--done .ih-task-row__title {
-  text-decoration: line-through;
-  color: var(--ih-text-secondary);
-}
-
-.ih-task-row__status {
-  width: 96px;
-  flex-shrink: 0;
-}
-
-.ih-task-row__main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 160px;
-  cursor: pointer;
-}
-
-.ih-task-row__title {
-  font-weight: 600;
-  font-size: 15px;
-}
-
 .ih-chip--priority-high {
   background: #f6dede;
   color: #c45c5c;
@@ -1150,17 +999,6 @@ onMounted(loadAllTasks);
 .ih-chip--priority-low {
   background: #f1ede6;
   color: var(--ih-text-secondary);
-}
-
-.ih-task-row__due {
-  font-size: 13px;
-  color: var(--ih-text-secondary);
-  white-space: nowrap;
-}
-
-.ih-task-row__due--overdue {
-  color: #c45c5c;
-  font-weight: 600;
 }
 
 /* 弹窗 */
@@ -1185,9 +1023,5 @@ onMounted(loadAllTasks);
 
 .ih-item-form__spacer {
   flex: 1;
-}
-
-.ih-empty {
-  padding: 60px 0;
 }
 </style>
