@@ -82,6 +82,8 @@ export interface UserDto {
   username: string;
   displayName: string;
   email: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
   createdAt: string;
 }
 
@@ -243,12 +245,30 @@ export interface RegisterInput {
 }
 
 export interface UpdateProfileInput {
-  displayName: string;
+  displayName?: string;
+  /** 传 null 清空邮箱/简介/头像，传 undefined 表示不改动 */
+  email?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface ChangePasswordInput {
   currentPassword: string;
   newPassword: string;
+}
+
+export interface DeleteAccountInput {
+  password: string;
+}
+
+/** 个人信息页「数据总览」用，REQUIREMENTS.md 之外的产品增强，跨模块聚合只读统计 */
+export interface ProfileStatsDto {
+  recipeCount: number;
+  submissionCount: number;
+  taskDoneCount: number;
+  taskTotalCount: number;
+  stockItemCount: number;
+  daysSinceJoined: number;
 }
 
 export interface CreatePrintImageInput {

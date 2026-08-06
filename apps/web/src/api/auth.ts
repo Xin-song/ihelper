@@ -1,6 +1,8 @@
 import type {
   ChangePasswordInput,
+  DeleteAccountInput,
   LoginInput,
+  ProfileStatsDto,
   RegisterInput,
   UpdateProfileInput,
   UserDto,
@@ -18,4 +20,8 @@ export const authApi = {
     apiClient.patch<UserDto>('/auth/me', payload).then((r) => r.data),
   changePassword: (payload: ChangePasswordInput) =>
     apiClient.post('/auth/password', payload).then((r) => r.data),
+  stats: () => apiClient.get<ProfileStatsDto>('/auth/me/stats').then((r) => r.data),
+  exportData: () => apiClient.get<Record<string, unknown>>('/auth/me/export').then((r) => r.data),
+  deleteAccount: (payload: DeleteAccountInput) =>
+    apiClient.post('/auth/me/delete', payload).then((r) => r.data),
 };

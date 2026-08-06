@@ -5,6 +5,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser, RequestUser } from './decorators/current-user.decorator';
 import { AUTH_COOKIE_NAME, AUTH_TOKEN_TTL_MS } from './auth.constants';
@@ -57,13 +58,36 @@ export class AuthController {
 
   @Patch('me')
   updateMe(@CurrentUser() user: RequestUser, @Body() dto: UpdateProfileDto) {
-    return this.authService.updateProfile(user.id, dto.displayName);
+    return this.authService.updateProfile(user.id, dto);
+  }
+
+  @Get('me/stats')
+  getStats(@CurrentUser() user: RequestUser) {
+    return this.authService.getStats(user.id);
+  }
+
+  @Get('me/export')
+  exportMyData(@CurrentUser() user: RequestUser) {
+    return this.authService.exportMyData(user.id);
   }
 
   @Post('password')
   @HttpCode(200)
   async changePassword(@CurrentUser() user: RequestUser, @Body() dto: ChangePasswordDto) {
     await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return { success: true };
+  }
+
+  /** 注销账号：和退出登录一样清 cookie，前端立刻回到未登录态 */
+  @Post('me/delete')
+  @HttpCode(200)
+  async deleteAccount(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: DeleteAccountDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.deleteAccount(user.id, dto.password);
+    res.clearCookie(AUTH_COOKIE_NAME, COOKIE_OPTIONS);
     return { success: true };
   }
 }

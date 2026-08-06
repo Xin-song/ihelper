@@ -103,7 +103,10 @@ async function logout() {
 
         <el-dropdown v-if="authStore.user" class="ih-user" trigger="click" @command="handleUserCommand">
           <span class="ih-user__trigger">
-            <span class="ih-user__avatar">{{ authStore.user.displayName.slice(0, 1) }}</span>
+            <span class="ih-user__avatar">
+              <img v-if="authStore.user.avatarUrl" :src="authStore.user.avatarUrl" alt="" />
+              <template v-else>{{ authStore.user.displayName.slice(0, 1) }}</template>
+            </span>
             <span class="ih-user__name">{{ authStore.user.displayName }}</span>
           </span>
           <template #dropdown>
@@ -239,6 +242,13 @@ async function logout() {
   font-weight: 700;
   font-size: 14px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.ih-user__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .ih-user__name {
