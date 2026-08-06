@@ -1,10 +1,26 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useRecipesStore } from '../stores/recipes';
+import { recipesApi } from '../api/recipes';
+import { useRecipeSearch } from '../composables/useRecipeSearch';
 import RecipeCard from '../components/RecipeCard.vue';
+import RecipeSearchFilters from '../components/RecipeSearchFilters.vue';
 
 const store = useRecipesStore();
 onMounted(() => store.fetchAll());
+
+const { query, results, loading: searchLoading, hasActiveFilters, reset } = useRecipeSearch((q) =>
+  recipesApi.list(q),
+);
+
+/** 筛选下拉的可选项来自「我的菜谱」全量数据，不是筛选结果本身，避免选了一个分类后其它分类就从下拉里消失 */
+const categoryOptions = computed(() =>
+  [...new Set(store.items.map((r) => r.category).filter((c): c is string => !!c))].sort(),
+);
+const tagOptions = computed(() => [...new Set(store.items.flatMap((r) => r.tags))].sort());
+
+const displayedItems = computed(() => (hasActiveFilters.value ? results.value : store.items));
+const listLoading = computed(() => (hasActiveFilters.value ? searchLoading.value : store.loading));
 </script>
 
 <template>
@@ -16,20 +32,34 @@ onMounted(() => store.fetchAll());
       </div>
     </div>
 
-    <div v-if="store.loading" class="ih-grid">
+    <RecipeSearchFilters
+      :query="query"
+      :category-options="categoryOptions"
+      :tag-options="tagOptions"
+      :has-active-filters="hasActiveFilters"
+      @reset="reset"
+    />
+
+    <div v-if="listLoading" class="ih-grid">
       <div v-for="i in 6" :key="i" class="ih-skeleton ih-card"></div>
     </div>
 
     <el-empty
-      v-else-if="store.items.length === 0"
+      v-else-if="displayedItems.length === 0 && !hasActiveFilters"
       description="还没有菜谱，先记录第一道吧"
       class="ih-empty"
     >
       <el-button type="primary" round @click="$router.push('/recipes/new')">新建菜谱</el-button>
     </el-empty>
 
+    <el-empty
+      v-else-if="displayedItems.length === 0"
+      description="没有符合条件的菜谱，换个筛选条件试试"
+      class="ih-empty"
+    />
+
     <div v-else class="ih-grid">
-      <RecipeCard v-for="recipe in store.items" :key="recipe.id" :recipe="recipe" />
+      <RecipeCard v-for="recipe in displayedItems" :key="recipe.id" :recipe="recipe" />
     </div>
   </div>
 </template>

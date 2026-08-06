@@ -1,22 +1,37 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { RecipeListItemDto } from '@ihelper/shared';
 import { recipesApi } from '../api/recipes';
+import { useRecipeSearch } from '../composables/useRecipeSearch';
 import RecipeCard from '../components/RecipeCard.vue';
+import RecipeSearchFilters from '../components/RecipeSearchFilters.vue';
 
-const recipes = ref<RecipeListItemDto[]>([]);
-const loading = ref(true);
+/** 未筛选时的基线数据：默认展示 + 筛选下拉的可选项来源 */
+const baseline = ref<RecipeListItemDto[]>([]);
+const baselineLoading = ref(true);
 
 onMounted(async () => {
   try {
-    recipes.value = await recipesApi.square();
+    baseline.value = await recipesApi.square();
   } catch (error) {
     ElMessage.error((error as Error).message);
   } finally {
-    loading.value = false;
+    baselineLoading.value = false;
   }
 });
+
+const { query, results, loading: searchLoading, hasActiveFilters, reset } = useRecipeSearch((q) =>
+  recipesApi.square(q),
+);
+
+const categoryOptions = computed(() =>
+  [...new Set(baseline.value.map((r) => r.category).filter((c): c is string => !!c))].sort(),
+);
+const tagOptions = computed(() => [...new Set(baseline.value.flatMap((r) => r.tags))].sort());
+
+const displayedItems = computed(() => (hasActiveFilters.value ? results.value : baseline.value));
+const listLoading = computed(() => (hasActiveFilters.value ? searchLoading.value : baselineLoading.value));
 </script>
 
 <template>
@@ -26,11 +41,19 @@ onMounted(async () => {
       <p class="ih-muted">大家公开出来的菜谱，看看今天做点什么</p>
     </div>
 
-    <div v-if="loading" class="ih-grid">
+    <RecipeSearchFilters
+      :query="query"
+      :category-options="categoryOptions"
+      :tag-options="tagOptions"
+      :has-active-filters="hasActiveFilters"
+      @reset="reset"
+    />
+
+    <div v-if="listLoading" class="ih-grid">
       <div v-for="i in 6" :key="i" class="ih-skeleton ih-card"></div>
     </div>
 
-    <el-empty v-else-if="recipes.length === 0" class="ih-empty">
+    <el-empty v-else-if="displayedItems.length === 0 && !hasActiveFilters" class="ih-empty">
       <template #description>
         <p>广场上还没有公开的菜谱</p>
         <p class="ih-muted ih-empty__hint">
@@ -40,8 +63,14 @@ onMounted(async () => {
       <el-button type="primary" round @click="$router.push('/')">去我的菜谱</el-button>
     </el-empty>
 
+    <el-empty
+      v-else-if="displayedItems.length === 0"
+      description="没有符合条件的菜谱，换个筛选条件试试"
+      class="ih-empty"
+    />
+
     <div v-else class="ih-grid">
-      <RecipeCard v-for="recipe in recipes" :key="recipe.id" :recipe="recipe" />
+      <RecipeCard v-for="recipe in displayedItems" :key="recipe.id" :recipe="recipe" />
     </div>
   </div>
 </template>

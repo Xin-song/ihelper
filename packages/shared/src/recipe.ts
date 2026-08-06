@@ -44,6 +44,17 @@ export const RECIPE_VISIBILITY_LABELS: Record<RecipeVisibility, string> = {
   public: '公开到广场',
 };
 
+/** 搜索结果排序方式，REQUIREMENTS.md 1.5 */
+export const RECIPE_SORT_OPTIONS = ['recent', 'lastCooked', 'rating', 'duration'] as const;
+export type RecipeSortOption = (typeof RECIPE_SORT_OPTIONS)[number];
+
+export const RECIPE_SORT_OPTION_LABELS: Record<RecipeSortOption, string> = {
+  recent: '最近添加',
+  lastCooked: '最近制作',
+  rating: '评分',
+  duration: '总耗时',
+};
+
 /** 打印版菜谱图的版式 */
 export const PRINT_ORIENTATIONS = ['landscape', 'portrait'] as const;
 export type PrintOrientation = (typeof PRINT_ORIENTATIONS)[number];
@@ -112,12 +123,32 @@ export interface RecipeListItemDto {
   difficulty: number | null;
   servings: number;
   visibility: RecipeVisibility;
+  createdAt: string;
   updatedAt: string;
+  /** 个人评分、最近制作时间：排序（评分/最近制作）用，见 RECIPE_SORT_OPTIONS */
+  personalRating: number | null;
+  lastCookedAt: string | null;
   authorId: string | null;
   /** 登录接入前建的存量菜谱没有作者，前端按「未认领」处理 */
   author: RecipeAuthorDto | null;
   /** 这道菜收到的作业数，广场和列表页展示用 */
   submissionCount?: number;
+}
+
+/**
+ * 菜谱搜索/筛选查询参数，REQUIREMENTS.md 1.5。
+ * 关键词覆盖标题/简介/步骤；食材反查传 ingredientIds，语义是「配料表里的必选项
+ * 全部在这个食材集合里」（可选配料不参与判断），见 RecipesService.filterByIngredients。
+ */
+export interface RecipeListQuery {
+  keyword?: string;
+  category?: string;
+  tags?: string[];
+  difficulty?: number;
+  /** 总耗时（prepMinutes + cookMinutes）不超过这个分钟数 */
+  maxTotalMinutes?: number;
+  sortBy?: RecipeSortOption;
+  ingredientIds?: string[];
 }
 
 export interface RecipePrintImageDto {
@@ -131,9 +162,6 @@ export interface RecipePrintImageDto {
 export interface RecipeDetailDto extends RecipeListItemDto {
   steps: RecipeStep[];
   source: string | null;
-  personalRating: number | null;
-  lastCookedAt: string | null;
-  createdAt: string;
   recipeIngredients: RecipeIngredientDto[];
   printImages: RecipePrintImageDto[];
 }

@@ -3,14 +3,17 @@ import type {
   CreateRecipeInput,
   RecipeDetailDto,
   RecipeListItemDto,
+  RecipeListQuery,
   RecipePrintImageDto,
 } from '@ihelper/shared';
 import { apiClient } from './client';
 
 export const recipesApi = {
-  list: () => apiClient.get<RecipeListItemDto[]>('/recipes').then((r) => r.data),
+  list: (query?: RecipeListQuery) =>
+    apiClient.get<RecipeListItemDto[]>('/recipes', { params: query }).then((r) => r.data),
   /** 菜谱广场：只返回 visibility = public 的 */
-  square: () => apiClient.get<RecipeListItemDto[]>('/recipes/square').then((r) => r.data),
+  square: (query?: RecipeListQuery) =>
+    apiClient.get<RecipeListItemDto[]>('/recipes/square', { params: query }).then((r) => r.data),
   get: (id: string) => apiClient.get<RecipeDetailDto>(`/recipes/${id}`).then((r) => r.data),
   create: (payload: CreateRecipeInput) =>
     apiClient.post<RecipeDetailDto>('/recipes', payload).then((r) => r.data),

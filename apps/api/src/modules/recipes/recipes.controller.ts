@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { CreatePrintImageDto } from './dto/create-print-image.dto';
+import { ListRecipesDto } from './dto/list-recipes.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser, RequestUser } from '../auth/decorators/current-user.decorator';
 
@@ -12,15 +13,15 @@ export class RecipesController {
 
   @Public()
   @Get()
-  findAll() {
-    return this.recipesService.findAll();
+  findAll(@Query() query: ListRecipesDto) {
+    return this.recipesService.findAll(query);
   }
 
   /** 菜谱广场。放在 :id 之前，否则 'square' 会被当成 id 匹配掉 */
   @Public()
   @Get('square')
-  findPublic() {
-    return this.recipesService.findPublic();
+  findPublic(@Query() query: ListRecipesDto) {
+    return this.recipesService.findPublic(query);
   }
 
   @Public()
